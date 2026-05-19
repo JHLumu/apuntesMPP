@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 05 · Híbrida y manycores — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 05 · BLOQUE II</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Híbrida<br>y manycores</h1>
+    <p class="session-subtitle">Combinar paradigmas no es elegancia académica: es lo que dicta la arquitectura real. Un cluster con multicores pide MPI+OpenMP, y si además hay GPU se suma CUDA.</p>
+  </header>
+
+  <section>
+    <h2>Por qué la programación pura ya no basta</h2>
+    <p>Imagina un cluster de 200 nodos con 32 cores por nodo y una GPU por nodo. Tienes varias opciones:</p>
+
+    <table>
+      <tr><th>Opción</th><th>Cómo aprovecha el hardware</th><th>Problema</th></tr>
+      <tr>
+        <td>Solo MPI, 6400 procesos</td>
+        <td>Cada core un proceso MPI</td>
+        <td>Excesivas comunicaciones intra-nodo y consumo de memoria (cada proceso replica estructuras)</td>
+      </tr>
+      <tr>
+        <td>Solo OpenMP</td>
+        <td>Solo aprovecha un nodo</td>
+        <td>Desperdicia 199 nodos</td>
+      </tr>
+      <tr>
+        <td>Solo CUDA</td>
+        <td>Aprovecha la GPU del nodo donde se lanza</td>
+        <td>CPUs y otros nodos ociosos</td>
+      </tr>
+      <tr>
+        <td><strong>MPI + OpenMP + CUDA</strong></td>
+        <td>Un proceso MPI por nodo, OpenMP entre cores, kernels CUDA en la GPU</td>
+        <td>Más complejo de programar, pero el único que aprovecha todo</td>
+      </tr>
+    </table>
+
+    <p>Cada nivel de paralelismo ataca un nivel del hardware: <em>MPI</em> entre nodos, <em>OpenMP</em> entre cores de un nodo, <em>SIMD/CUDA</em> dentro del core o en la GPU.</p>
+  </section>
+
+  <section>
+    <h2>Paralelismo anidado: el caso más simple</h2>
+    <p>Antes de mezclar APIs, conviene entender el anidamiento <em>dentro</em> de OpenMP: una región paralela dentro de otra región paralela.</p>
+
+<pre><code>omp_set_nested(<span class="nm">1</span>);   <span class="cm">// habilitar anidamiento</span>
+
+<span class="pr">#pragma omp parallel</span> num_threads(<span class="nm">4</span>)
+{
+    <span class="cm">// 4 hilos exteriores</span>
+    <span class="pr">#pragma omp parallel</span> num_threads(<span class="nm">3</span>)
+    {
+        <span class="cm">// cada uno de los 4 lanza 3 hilos interiores = 12 hilos</span>
+        trabajar();
+    }
+}</code></pre>
+
+    <p>Útil cuando hay <strong>dos niveles naturales</strong> de paralelismo: por ejemplo, varias instancias de un problema que se resuelven en paralelo, y dentro de cada instancia hay bucles paralelizables.</p>
+
+    <div class="learning-hint">
+      Habilitar anidamiento no significa siempre que sea buena idea. Si los hilos exteriores ya saturan los cores, los interiores compiten por el mismo hardware. Regla práctica: anida cuando en el nivel exterior tengas pocas tareas grandes y heterogéneas.
+    </div>
+  </section>
+
+  <section>
+    <h2>MPI + OpenMP: el patrón estándar</h2>
+    <p>La combinación más común en HPC. Un proceso MPI por nodo (o por <em>socket</em>), y OpenMP dentro para usar los cores.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MPI+OpenMP">
+        <style>
+          .node { fill: #fff; stroke: #1a1a1a; stroke-width: 1.5; }
+          .proc { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.5; }
+          .hilo { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1; }
+          .net { stroke: #4a6b3a; stroke-width: 2; stroke-dasharray: 5 3; fill: none; }
+          .t { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .ts { font: 500 9px 'JetBrains Mono', monospace; fill: #1a1a1a; text-anchor: middle; }
+          .lbl { font: italic 600 12px 'Fraunces', serif; fill: #c5410f; }
+        </style>
+
+        <rect class="node" x="40" y="30" width="180" height="140" rx="4"/>
+        <text class="t" x="130" y="50">Nodo 1</text>
+        <rect class="proc" x="55" y="65" width="150" height="90" rx="3"/>
+        <text class="ts" x="130" y="80">proceso MPI (rank 0)</text>
+        <rect class="hilo" x="65" y="95" width="32" height="20"/>
+        <rect class="hilo" x="102" y="95" width="32" height="20"/>
+        <rect class="hilo" x="139" y="95" width="32" height="20"/>
+        <rect class="hilo" x="176" y="95" width="22" height="20"/>
+        <text class="ts" x="81" y="108">h₀</text>
+        <text class="ts" x="118" y="108">h₁</text>
+        <text class="ts" x="155" y="108">h₂</text>
+        <text class="ts" x="187" y="108">…</text>
+        <text class="ts" x="130" y="135" style="font-style: italic;">hilos OpenMP</text>
+
+        <rect class="node" x="260" y="30" width="180" height="140" rx="4"/>
+        <text class="t" x="350" y="50">Nodo 2</text>
+        <rect class="proc" x="275" y="65" width="150" height="90" rx="3"/>
+        <text class="ts" x="350" y="80">proceso MPI (rank 1)</text>
+        <rect class="hilo" x="285" y="95" width="32" height="20"/>
+        <rect class="hilo" x="322" y="95" width="32" height="20"/>
+        <rect class="hilo" x="359" y="95" width="32" height="20"/>
+        <rect class="hilo" x="396" y="95" width="22" height="20"/>
+        <text class="ts" x="301" y="108">h₀</text>
+        <text class="ts" x="338" y="108">h₁</text>
+        <text class="ts" x="375" y="108">h₂</text>
+        <text class="ts" x="407" y="108">…</text>
+
+        <rect class="node" x="480" y="30" width="180" height="140" rx="4"/>
+        <text class="t" x="570" y="50">Nodo 3</text>
+        <rect class="proc" x="495" y="65" width="150" height="90" rx="3"/>
+        <text class="ts" x="570" y="80">proceso MPI (rank 2)</text>
+        <rect class="hilo" x="505" y="95" width="32" height="20"/>
+        <rect class="hilo" x="542" y="95" width="32" height="20"/>
+        <rect class="hilo" x="579" y="95" width="32" height="20"/>
+        <rect class="hilo" x="616" y="95" width="22" height="20"/>
+
+        <path class="net" d="M 130 175 L 350 175 L 570 175"/>
+        <text class="lbl" x="350" y="200" text-anchor="middle">MPI ⟷ red</text>
+        <text x="130" y="210" class="ts" style="font-style: italic;">OpenMP ↕ dentro</text>
+        <text x="570" y="210" class="ts" style="font-style: italic;">OpenMP ↕ dentro</text>
+      </svg>
+      <p class="caption">Un proceso MPI por nodo. La comunicación entre nodos pasa por la red; dentro de cada nodo, los hilos OpenMP comparten memoria y se comunican mucho más rápido.</p>
+    </div>
+
+    <h3>Inicialización: <code>MPI_Init_thread</code></h3>
+    <p>Cuando vas a usar MPI con hilos hay que declarar el nivel de uso:</p>
+
+<pre><code><span class="kw">int</span> provided;
+<span class="fn">MPI_Init_thread</span>(&amp;argc, &amp;argv, MPI_THREAD_FUNNELED, &amp;provided);</code></pre>
+
+    <ul>
+      <li><code>MPI_THREAD_SINGLE</code>: sin hilos. Equivalente a <code>MPI_Init</code>.</li>
+      <li><code>MPI_THREAD_FUNNELED</code>: hay hilos OpenMP pero solo el <strong>maestro</strong> llama a MPI. El más usado.</li>
+      <li><code>MPI_THREAD_SERIALIZED</code>: cualquier hilo puede llamar a MPI, pero no a la vez.</li>
+      <li><code>MPI_THREAD_MULTIPLE</code>: cualquier hilo en cualquier momento. Máxima flexibilidad, máximo coste.</li>
+    </ul>
+
+    <h3>Ejemplo: multiplicación de matrices</h3>
+
+<pre><code><span class="cm">// Cada proceso MPI recibe unas filas y multiplica con OpenMP</span>
+<span class="kw">int</span> filas_locales = N / nproc;
+
+<span class="fn">MPI_Scatter</span>(A, filas_locales * N, MPI_DOUBLE,
+            A_local, filas_locales * N, MPI_DOUBLE,
+            <span class="nm">0</span>, MPI_COMM_WORLD);
+
+<span class="fn">MPI_Bcast</span>(B, N * N, MPI_DOUBLE, <span class="nm">0</span>, MPI_COMM_WORLD);
+
+<span class="pr">#pragma omp parallel for</span> collapse(<span class="nm">2</span>)
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; filas_locales; i++)
+    <span class="kw">for</span> (<span class="kw">int</span> j = <span class="nm">0</span>; j &lt; N; j++) {
+        <span class="kw">double</span> s = <span class="nm">0</span>;
+        <span class="kw">for</span> (<span class="kw">int</span> k = <span class="nm">0</span>; k &lt; N; k++)
+            s += A_local[i*N + k] * B[k*N + j];
+        C_local[i*N + j] = s;
+    }
+
+<span class="fn">MPI_Gather</span>(C_local, filas_locales * N, MPI_DOUBLE,
+           C, filas_locales * N, MPI_DOUBLE,
+           <span class="nm">0</span>, MPI_COMM_WORLD);</code></pre>
+  </section>
+
+  <section>
+    <h2>GPU con CUDA</h2>
+    <p>Las GPU son aceleradores con miles de cores muy simples. El paradigma es SIMD masivo: lanzas un <em>kernel</em> y se ejecuta sobre una <em>grid</em> de hilos, todos haciendo lo mismo sobre datos distintos.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Arquitectura de programación CUDA">
+        <style>
+          .host { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .gpu { fill: #f0f4ec; stroke: #4a6b3a; stroke-width: 1.5; }
+          .grid { fill: #fff; stroke: #4a6b3a; stroke-width: 1; }
+          .block { fill: #f7f3ec; stroke: #4a6b3a; stroke-width: 1; }
+          .thr { fill: #ffd9b3; stroke: #c5410f; stroke-width: 0.5; }
+          .t { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; }
+          .ts { font: 500 9px 'JetBrains Mono', monospace; fill: #3d3d3d; }
+          .arr { stroke: #c5410f; stroke-width: 1.5; fill: none; marker-end: url(#a3); }
+        </style>
+        <defs>
+          <marker id="a3" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <rect class="host" x="20" y="20" width="160" height="280" rx="3"/>
+        <text class="t" x="100" y="40" text-anchor="middle">Host (CPU)</text>
+        <rect class="grid" x="35" y="55" width="130" height="35"/>
+        <text class="ts" x="100" y="76" text-anchor="middle">código C/C++</text>
+        <text class="ts" x="100" y="86" text-anchor="middle">secuencial</text>
+        <rect class="grid" x="35" y="100" width="130" height="60"/>
+        <text class="ts" x="100" y="120" text-anchor="middle">cudaMalloc(&amp;d_a,...)</text>
+        <text class="ts" x="100" y="135" text-anchor="middle">cudaMemcpy(d_a,a,...)</text>
+        <text class="ts" x="100" y="150" text-anchor="middle" style="fill: #c5410f;">kernel&lt;&lt;&lt;G,B&gt;&gt;&gt;(...);</text>
+        <rect class="grid" x="35" y="170" width="130" height="35"/>
+        <text class="ts" x="100" y="190" text-anchor="middle">cudaMemcpy(c,d_c,...)</text>
+        <text class="ts" x="100" y="200" text-anchor="middle" style="font-style: italic;">recoge resultado</text>
+
+        <path class="arr" d="M 175 130 L 220 130"/>
+        <text class="ts" x="197" y="125" text-anchor="middle" style="font-style: italic;">PCIe</text>
+        <path class="arr" d="M 220 270 L 175 270"/>
+
+        <rect class="gpu" x="220" y="20" width="460" height="280" rx="3"/>
+        <text class="t" x="450" y="40" text-anchor="middle">Device (GPU)</text>
+        <text class="ts" x="450" y="55" text-anchor="middle" style="font-style: italic;">Grid (1D, 2D o 3D) de bloques</text>
+
+        <g>
+          <rect class="block" x="240" y="70" width="130" height="80"/>
+          <text class="ts" x="305" y="85" text-anchor="middle">Block(0,0)</text>
+          <rect class="thr" x="248" y="93" width="14" height="14"/><rect class="thr" x="264" y="93" width="14" height="14"/><rect class="thr" x="280" y="93" width="14" height="14"/><rect class="thr" x="296" y="93" width="14" height="14"/><rect class="thr" x="312" y="93" width="14" height="14"/><rect class="thr" x="328" y="93" width="14" height="14"/><rect class="thr" x="344" y="93" width="14" height="14"/>
+          <rect class="thr" x="248" y="110" width="14" height="14"/><rect class="thr" x="264" y="110" width="14" height="14"/><rect class="thr" x="280" y="110" width="14" height="14"/><rect class="thr" x="296" y="110" width="14" height="14"/><rect class="thr" x="312" y="110" width="14" height="14"/><rect class="thr" x="328" y="110" width="14" height="14"/><rect class="thr" x="344" y="110" width="14" height="14"/>
+          <rect class="thr" x="248" y="127" width="14" height="14"/><rect class="thr" x="264" y="127" width="14" height="14"/><rect class="thr" x="280" y="127" width="14" height="14"/><rect class="thr" x="296" y="127" width="14" height="14"/><rect class="thr" x="312" y="127" width="14" height="14"/><rect class="thr" x="328" y="127" width="14" height="14"/><rect class="thr" x="344" y="127" width="14" height="14"/>
+        </g>
+        <rect class="block" x="380" y="70" width="130" height="80"/>
+        <text class="ts" x="445" y="85" text-anchor="middle">Block(1,0)</text>
+        <rect class="block" x="520" y="70" width="130" height="80"/>
+        <text class="ts" x="585" y="85" text-anchor="middle">Block(2,0)</text>
+        <rect class="block" x="240" y="160" width="130" height="80"/>
+        <text class="ts" x="305" y="175" text-anchor="middle">Block(0,1)</text>
+        <rect class="block" x="380" y="160" width="130" height="80"/>
+        <text class="ts" x="445" y="175" text-anchor="middle">Block(1,1)</text>
+        <rect class="block" x="520" y="160" width="130" height="80"/>
+        <text class="ts" x="585" y="175" text-anchor="middle">Block(2,1)</text>
+
+        <text class="ts" x="450" y="265" text-anchor="middle" style="font-style: italic;">Cada bloque contiene cientos de hilos.</text>
+        <text class="ts" x="450" y="280" text-anchor="middle" style="font-style: italic;">Los hilos de un mismo bloque pueden cooperar (memoria compartida, syncthreads).</text>
+        <text class="ts" x="450" y="293" text-anchor="middle" style="fill: #c5410f;">threadIdx, blockIdx, blockDim, gridDim → calcular qué dato me toca</text>
+      </svg>
+      <p class="caption">El kernel descompone el problema en una grid de bloques; cada bloque en hilos. La GPU asigna automáticamente esos bloques a los Streaming Multiprocessors disponibles.</p>
+    </div>
+
+    <h3>Esqueleto típico de programa CUDA</h3>
+
+<pre><code><span class="cm">// Kernel: lo que ejecuta CADA hilo</span>
+__global__ <span class="kw">void</span> sumar_vectores(<span class="kw">float</span> *a, <span class="kw">float</span> *b, <span class="kw">float</span> *c, <span class="kw">int</span> n) {
+    <span class="kw">int</span> i = blockIdx.x * blockDim.x + threadIdx.x;
+    <span class="kw">if</span> (i &lt; n)
+        c[i] = a[i] + b[i];
+}
+
+<span class="kw">int</span> main() {
+    <span class="kw">float</span> *a, *b, *c;          <span class="cm">// host</span>
+    <span class="kw">float</span> *d_a, *d_b, *d_c;    <span class="cm">// device (GPU)</span>
+    <span class="kw">int</span> n = <span class="nm">1</span> &lt;&lt; <span class="nm">20</span>;
+    <span class="kw">size_t</span> bytes = n * <span class="kw">sizeof</span>(<span class="kw">float</span>);
+
+    cudaMalloc(&amp;d_a, bytes);
+    cudaMalloc(&amp;d_b, bytes);
+    cudaMalloc(&amp;d_c, bytes);
+
+    cudaMemcpy(d_a, a, bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, bytes, cudaMemcpyHostToDevice);
+
+    <span class="kw">int</span> B = <span class="nm">256</span>;
+    <span class="kw">int</span> G = (n + B - <span class="nm">1</span>) / B;
+    sumar_vectores&lt;&lt;&lt;G, B&gt;&gt;&gt;(d_a, d_b, d_c, n);
+
+    cudaMemcpy(c, d_c, bytes, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
+    <span class="kw">return</span> <span class="nm">0</span>;
+}</code></pre>
+
+    <p>Para compilar: <code>nvcc prog.cu -o prog</code>.</p>
+
+    <div class="key-concept">
+      <span class="label">CUIDADO CARO</span>
+      <h3>Las transferencias host ↔ device son lentas</h3>
+      <p>El bus PCIe es órdenes de magnitud más lento que la memoria de la GPU. Si copias datos de ida y vuelta para hacer poco cómputo, la GPU resulta más lenta que la CPU. Regla pragmática: transfiere una vez, ejecuta muchos kernels, recoge una vez.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Memoria de una GPU: jerarquía</h2>
+    <p>No es una memoria homogénea como la RAM de un PC. Hay varios niveles con tamaños y velocidades muy distintos.</p>
+
+    <ul>
+      <li><strong>Registros</strong> (por hilo): rapidísimos, pocos.</li>
+      <li><strong>Memoria compartida</strong> (por bloque): controlada por el programador con <code>__shared__</code>. Permite que los hilos de un bloque cooperen sin tocar memoria global. Decisiva para rendimiento.</li>
+      <li><strong>Memoria global</strong>: la VRAM grande, accesible por todos los hilos. Lenta comparada con la compartida.</li>
+      <li><strong>Memoria de constantes</strong>: cacheada, de solo lectura.</li>
+      <li><strong>Memoria de texturas</strong>: cacheada, optimizada para acceso espacial.</li>
+    </ul>
+
+    <p>Los accesos a memoria global deben ser <strong>coalescentes</strong>: hilos consecutivos deben leer direcciones consecutivas para que el hardware los fusione en una sola transacción.</p>
+  </section>
+
+  <section>
+    <h2>Intel Xeon Phi (MIC)</h2>
+    <p>Alternativa a las GPU. Coprocesador x86 con muchos cores (hasta 61) y unidades vectoriales muy anchas (512 bits). La gran ventaja respecto a CUDA: <strong>reutilizas código x86</strong>, no aprendes un lenguaje nuevo. OpenMP y MPI funcionan directamente.</p>
+
+    <p>Tres modos de ejecución:</p>
+    <ul>
+      <li><strong>Nativo</strong>: el programa se compila para el Phi y se ejecuta enteramente en él, sin host.</li>
+      <li><strong>Simétrico</strong>: procesos MPI tanto en host como en Phi, vistos como nodos más.</li>
+      <li><strong>Offload</strong>: el programa corre en host y descarga regiones concretas al Phi con directivas (similar al modelo CPU+GPU).</li>
+    </ul>
+
+    <p>Intel descontinuó la línea Xeon Phi, pero las ideas continuaron en las extensiones AVX-512 de los Xeon convencionales.</p>
+  </section>
+
+  <section>
+    <h2>Paralelismo multinivel</h2>
+    <p>El concepto general: cada nivel de paralelismo (anidado, híbrido, heterogéneo) usa un mecanismo distinto. Un programa real puede tener:</p>
+
+    <ul>
+      <li><strong>Nivel 1 — explícito</strong>: MPI entre nodos (el programador escribe los <code>send</code>).</li>
+      <li><strong>Nivel 2 — explícito</strong>: OpenMP entre cores (el programador pone <code>#pragma omp</code>).</li>
+      <li><strong>Nivel 3 — implícito</strong>: BLAS multithreaded en cada operación matricial (la librería ya está paralelizada).</li>
+      <li><strong>Nivel 4 — implícito</strong>: el compilador vectoriza con AVX automáticamente.</li>
+    </ul>
+
+    <p>Lo difícil del multinivel no es escribirlo: es <em>medir</em> qué configuración (cuántos procesos × cuántos hilos × cuántas threads vectoriales) da las mejores prestaciones en un sistema concreto. Las prácticas del curso piden exactamente eso.</p>
+
+    <div class="connection-note">
+      <a href="sesion_06.html">Sesión 06 · Análisis</a>
+      <p>El análisis de prestaciones de un programa híbrido es más complejo porque hay que estudiar speed-up y eficiencia variando dos o tres parámetros (procesos, hilos, configuración GPU) a la vez.</p>
+    </div>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">Hay preguntas que combinan conceptos de varias sesiones deliberadamente. Discriminar OpenMP de MPI de CUDA es exactamente lo que se evalúa en el examen.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">En un cluster con multicores, ¿por qué no usar simplemente un proceso MPI por core?</div>
+        <div class="answer">Cada proceso MPI tiene su propia memoria y replica estructuras: gasta más RAM. Y las comunicaciones intra-nodo entre tantos procesos sobrecargan el sistema. Es más eficiente un proceso MPI por nodo (o socket) que use OpenMP entre los cores.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué hace <code>MPI_Init_thread</code> y qué nivel se elige normalmente?</div>
+        <div class="answer">Es la inicialización de MPI cuando vas a usar hilos. Le dices qué nivel necesitas. Lo más común es <code>MPI_THREAD_FUNNELED</code>: hay hilos OpenMP pero solo el maestro hace llamadas MPI.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es un kernel CUDA?</div>
+        <div class="answer">Una función que se ejecuta en la GPU, lanzada desde la CPU con <code>kernel&lt;&lt;&lt;grid, bloque&gt;&gt;&gt;(args)</code>. Una sola llamada lanza miles de hilos, cada uno con su <code>threadIdx</code> y <code>blockIdx</code> para identificar qué dato le toca.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué la transferencia host↔device puede arruinar el rendimiento de un programa CUDA?</div>
+        <div class="answer">El bus PCIe es mucho más lento que la memoria interna de la GPU. Si por cada cómputo pequeño copias datos ida y vuelta, el tiempo de transferencia domina y la GPU resulta más lenta que la CPU.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es la memoria compartida (<code>__shared__</code>) en CUDA?</div>
+        <div class="answer">Memoria muy rápida asociada a un bloque de hilos, gestionada explícitamente por el programador. Permite que los hilos de un mismo bloque cooperen sin pasar por la memoria global. Su buen uso es la clave de los algoritmos GPU eficientes.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué significa "acceso coalescente" a memoria global de una GPU?</div>
+        <div class="answer">Que hilos consecutivos (dentro de un warp) leen posiciones consecutivas de memoria. Cuando se cumple, el hardware combina los accesos en una sola transacción. Cuando no, cada hilo paga su propia transacción y el rendimiento cae en picado.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Cuál es la gran ventaja de Xeon Phi sobre CUDA?</div>
+        <div class="answer">Es x86: el código secuencial existente compila y se ejecuta directamente. OpenMP y MPI funcionan sin cambios. CUDA, en cambio, exige reescribir las partes paralelas en su modelo específico.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Repaso de la sesión 3: ¿qué hace <code>collapse(2)</code> en un <code>#pragma omp parallel for</code>?</div>
+        <div class="answer">Combina dos bucles anidados en uno solo a efectos de reparto entre hilos. Aumenta la granularidad disponible y, en bucles cuadrados pequeños, evita que solo se paralelice el bucle exterior.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es el paralelismo multinivel implícito? Pon un ejemplo.</div>
+        <div class="answer">El que no escribe el programador sino que aporta una librería o el compilador. Ejemplos: BLAS multihilo dentro de una llamada a <code>dgemm</code>, vectorización automática AVX que aplica el compilador a un bucle.</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_04.html">
+      <div class="nav-label">← Sesión 04</div>
+      <div class="nav-title">MPI</div>
+    </a>
+    <a class="nav-link next" href="sesion_06.html">
+      <div class="nav-label">Sesión 06 →</div>
+      <div class="nav-title">Análisis de algoritmos</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metodología de la Programación Paralela — Curso</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">CURSO 2025/26</span>
+      <span>Facultad de Informática · Universidad de Murcia</span>
+    </div>
+    <h1 class="session-title">Metodología<br>de la Programación<br>Paralela</h1>
+    <p class="session-subtitle">Doce sesiones para entender —y recordar— cómo diseñar, implementar y analizar programas que aprovechan varios elementos de proceso al mismo tiempo.</p>
+  </header>
+
+  <section>
+    <h2 style="counter-reset: section;">Cómo está pensado este material</h2>
+    <p>Cada sesión está estructurada según técnicas de aprendizaje respaldadas por la investigación en ciencia cognitiva. No es una recopilación de transparencias: es una secuencia diseñada para que el contenido <em>se retenga</em> a largo plazo.</p>
+
+    <div class="comparison" style="margin-top: 2rem;">
+      <div class="col">
+        <h4>↻ Práctica de recuperación</h4>
+        <p style="font-size: 0.95rem;">Cada sesión termina con tarjetas-pregunta. Recuperar activamente lo aprendido —en lugar de releer— es una de las técnicas con mayor evidencia empírica (Hattie &amp; Donoghue, 2021; Dunlosky, 2013).</p>
+      </div>
+      <div class="col alt">
+        <h4>⧉ Codificación dual</h4>
+        <p style="font-size: 0.95rem;">Combinar palabras con esquemas visuales crea rutas de recuerdo independientes. Por eso cada concepto importante va acompañado de un diagrama.</p>
+      </div>
+      <div class="col">
+        <h4>⇆ Práctica entreverada</h4>
+        <p style="font-size: 0.95rem;">Los <em>quizzes</em> mezclan preguntas de sesiones recientes para forzar discriminación entre conceptos parecidos: OpenMP frente a MPI, datos frente a tareas, síncrono frente a relajado.</p>
+      </div>
+      <div class="col alt">
+        <h4>⊕ Elaboración y ejemplos concretos</h4>
+        <p style="font-size: 0.95rem;">Cada construcción se explica con código real y se conecta con las anteriores. Saber <em>por qué</em> se usa <code>reduction</code> importa más que saber su sintaxis.</p>
+      </div>
+    </div>
+
+    <div class="learning-hint">
+      Espacia tus sesiones de estudio. Una hora al día durante seis días retiene mucho más que seis horas seguidas: es el efecto del espaciado, demostrado en metaanálisis con más de 169 000 participantes.
+    </div>
+  </section>
+
+  <section>
+    <h2>Las doce sesiones</h2>
+    <p>Pensadas para leerse en orden la primera vez —cada una asume las anteriores—. Después, vuelve a las que te resulten difíciles con días de separación: ese olvido intermedio es lo que consolida la memoria.</p>
+
+    <div class="toc-grid">
+
+      <a class="toc-card" href="sesion_01.html">
+        <span class="num">SESIÓN 01</span>
+        <div class="title">Presentación de sistemas</div>
+        <p class="desc">Variedad de sistemas computacionales, paralelismo en CPUs secuenciales, multicore, GPU, clusters.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_02.html">
+        <span class="num">SESIÓN 02</span>
+        <div class="title">Introducción a la computación paralela</div>
+        <p class="desc">Paradigmas: memoria compartida, paso de mensajes, SIMD. Topologías de red y entornos.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_03.html">
+        <span class="num">SESIÓN 03</span>
+        <div class="title">OpenMP</div>
+        <p class="desc">Directivas <code>#pragma omp</code>, regiones paralelas, sharing de variables, sincronización.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_04.html">
+        <span class="num">SESIÓN 04</span>
+        <div class="title">MPI</div>
+        <p class="desc">Paso de mensajes punto a punto, colectivas, tipos derivados, comunicadores.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_05.html">
+        <span class="num">SESIÓN 05</span>
+        <div class="title">Híbrida y manycores</div>
+        <p class="desc">MPI+OpenMP, paralelismo anidado, GPU con CUDA, Xeon Phi.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_06.html">
+        <span class="num">SESIÓN 06</span>
+        <div class="title">Análisis de algoritmos</div>
+        <p class="desc">Tiempo, speed-up, eficiencia, escalabilidad, modelo de comunicaciones.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_07.html">
+        <span class="num">SESIÓN 07</span>
+        <div class="title">Metodología de Foster</div>
+        <p class="desc">Particionado, comunicación, aglomeración, mapeo. PCAM como receta de diseño.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_08.html">
+        <span class="num">SESIÓN 08</span>
+        <div class="title">Paralelismo de datos</div>
+        <p class="desc">Mismo trabajo sobre datos distintos: suma, producto escalar, matrices por bloques.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_09.html">
+        <span class="num">SESIÓN 09</span>
+        <div class="title">Relajado y síncrono</div>
+        <p class="desc">Cuándo es seguro no sincronizar; cuándo es imprescindible. Patrones característicos.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_10.html">
+        <span class="num">SESIÓN 10</span>
+        <div class="title">Grafo y pipeline</div>
+        <p class="desc">Dependencias entre tareas, árboles de reducción, segmentación productiva.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_11.html">
+        <span class="num">SESIÓN 11</span>
+        <div class="title">Divide y vencerás · Prog. dinámica</div>
+        <p class="desc">Paralelizar esquemas secuenciales clásicos. Cuándo merece la pena.</p>
+      </a>
+
+      <a class="toc-card" href="sesion_12.html">
+        <span class="num">SESIÓN 12</span>
+        <div class="title">Trabajadores replicados</div>
+        <p class="desc">Bolsa de tareas, maestro-esclavo, backtracking y branch &amp; bound paralelos.</p>
+      </a>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Mapa conceptual del curso</h2>
+    <p>Las sesiones se agrupan en cuatro bloques. Reconocer dónde encaja cada técnica facilita recordarla.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 800 460" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mapa del curso">
+        <style>
+          .blk { fill: #ffffff; stroke: #1a1a1a; stroke-width: 1.5; }
+          .blk-warm { fill: #fdf6e3; stroke: #c5410f; }
+          .blk-cool { fill: #f0f5f8; stroke: #2a5f7f; }
+          .blk-green { fill: #f0f4ec; stroke: #4a6b3a; }
+          .blk-purple { fill: #f6f0f8; stroke: #6b3e7a; }
+          .lbl { font: 600 12px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .lbl-s { font: 500 10px 'JetBrains Mono', monospace; fill: #3d3d3d; text-anchor: middle; letter-spacing: 0.05em; }
+          .grp { font: italic 700 13px 'Fraunces', serif; fill: #1a1a1a; }
+          .ar { stroke: #d4cdb9; stroke-width: 1.5; fill: none; }
+        </style>
+
+        <!-- Bloque 1: Fundamentos -->
+        <text x="50" y="40" class="grp">I · Fundamentos</text>
+        <rect class="blk blk-warm" x="40" y="60" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="100" y="80">SESIÓN 01</text>
+        <text class="lbl" x="100" y="98">Sistemas</text>
+        <rect class="blk blk-warm" x="40" y="125" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="100" y="145">SESIÓN 02</text>
+        <text class="lbl" x="100" y="163">Paradigmas</text>
+
+        <!-- Bloque 2: Herramientas -->
+        <text x="250" y="40" class="grp">II · Herramientas</text>
+        <rect class="blk blk-cool" x="240" y="60" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="300" y="80">SESIÓN 03</text>
+        <text class="lbl" x="300" y="98">OpenMP</text>
+        <rect class="blk blk-cool" x="240" y="125" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="300" y="145">SESIÓN 04</text>
+        <text class="lbl" x="300" y="163">MPI</text>
+        <rect class="blk blk-cool" x="240" y="190" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="300" y="210">SESIÓN 05</text>
+        <text class="lbl" x="300" y="228">Híbrida + GPU</text>
+
+        <!-- Bloque 3: Análisis y diseño -->
+        <text x="470" y="40" class="grp">III · Cómo diseñar</text>
+        <rect class="blk blk-green" x="460" y="60" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="520" y="80">SESIÓN 06</text>
+        <text class="lbl" x="520" y="98">Análisis</text>
+        <rect class="blk blk-green" x="460" y="125" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="520" y="145">SESIÓN 07</text>
+        <text class="lbl" x="520" y="163">Metodología</text>
+
+        <!-- Bloque 4: Esquemas -->
+        <text x="800" y="40" class="grp" text-anchor="end">IV · Esquemas algorítmicos</text>
+        <rect class="blk blk-purple" x="660" y="60" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="720" y="80">SESIÓN 08</text>
+        <text class="lbl" x="720" y="98">Datos</text>
+        <rect class="blk blk-purple" x="660" y="125" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="720" y="145">SESIÓN 09</text>
+        <text class="lbl" x="720" y="163">Relajado/Síncrono</text>
+        <rect class="blk blk-purple" x="660" y="190" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="720" y="210">SESIÓN 10</text>
+        <text class="lbl" x="720" y="228">Grafo/Pipeline</text>
+        <rect class="blk blk-purple" x="660" y="255" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="720" y="275">SESIÓN 11</text>
+        <text class="lbl" x="720" y="293">DV / PD</text>
+        <rect class="blk blk-purple" x="660" y="320" width="120" height="55" rx="3"/>
+        <text class="lbl-s" x="720" y="340">SESIÓN 12</text>
+        <text class="lbl" x="720" y="358">Trab. replicados</text>
+
+        <!-- Flechas conectoras -->
+        <path class="ar" d="M 160 90 L 240 90" marker-end="url(#arrow)"/>
+        <path class="ar" d="M 160 155 L 240 155" marker-end="url(#arrow)"/>
+        <path class="ar" d="M 360 90 L 460 90" marker-end="url(#arrow)"/>
+        <path class="ar" d="M 360 155 L 460 155" marker-end="url(#arrow)"/>
+        <path class="ar" d="M 360 220 L 460 90" marker-end="url(#arrow)"/>
+        <path class="ar" d="M 580 90 L 660 90" marker-end="url(#arrow)"/>
+        <path class="ar" d="M 580 155 L 660 155" marker-end="url(#arrow)"/>
+        <path class="ar" d="M 580 155 L 660 220" marker-end="url(#arrow)"/>
+        <path class="ar" d="M 580 155 L 660 285" marker-end="url(#arrow)"/>
+        <path class="ar" d="M 580 155 L 660 350" marker-end="url(#arrow)"/>
+
+        <defs>
+          <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#d4cdb9"/>
+          </marker>
+        </defs>
+
+        <!-- Nota inferior -->
+        <text x="400" y="430" class="lbl-s" style="fill: #c5410f;">Cada sesión asume las flechas que apuntan hacia ella</text>
+      </svg>
+      <p class="caption">Las herramientas (II) son inseparables de los fundamentos (I); el análisis y la metodología (III) son la espina dorsal que sostiene todos los esquemas algorítmicos (IV).</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Referencias clave</h2>
+    <p style="font-size: 0.94rem;">Para quien quiera profundizar más allá de las transparencias:</p>
+    <ul style="font-size: 0.94rem;">
+      <li><strong>Almeida, Giménez, Mantas, Vidal.</strong> <em>Introducción a la programación paralela.</em> Libro base del curso.</li>
+      <li><strong>Foster, I.</strong> <em>Designing and Building Parallel Programs.</em> Disponible en línea: <a href="https://www.mcs.anl.gov/~itf/dbpp/text/book.html">mcs.anl.gov/~itf/dbpp</a></li>
+      <li><strong>Pacheco, P.</strong> <em>An Introduction to Parallel Programming.</em></li>
+      <li><strong>Grama, Karypis, Kumar, Gupta.</strong> <em>Introduction to Parallel Computing.</em></li>
+      <li><strong>Especificación OpenMP 6.0</strong> y referencia rápida de MPI: incluidas en los materiales del proyecto.</li>
+    </ul>
+    <p style="font-size: 0.85rem; color: var(--ink-soft); margin-top: 2rem; font-style: italic;">El diseño pedagógico de estas páginas se apoya, entre otros, en Hattie &amp; Donoghue (2021), Dunlosky et al. (2013) y la revisión sistemática de Madan (2023) sobre estrategias de aprendizaje basadas en evidencia.</p>
+  </section>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 12 · Trabajadores replicados — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 12 · BLOQUE IV · CIERRE</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Trabajadores<br>replicados</h1>
+    <p class="session-subtitle">Cuando el trabajo no se puede repartir a priori porque su tamaño y forma son impredecibles. Esquemas dinámicos: bolsa de tareas, maestro-esclavo, recorridos de árboles.</p>
+  </header>
+
+  <section>
+    <h2>El problema del trabajo impredecible</h2>
+    <p>Hasta ahora hemos asumido que se conocía a priori cuánto trabajo había y cómo se podía repartir. En muchos problemas reales ese supuesto no se cumple:</p>
+
+    <ul>
+      <li>El árbol de búsqueda crece de forma impredecible (juegos, optimización combinatoria).</li>
+      <li>Las tareas tienen costes muy distintos y desconocidos.</li>
+      <li>Se generan nuevas tareas durante la ejecución (ejemplo: simulación de partículas que colisionan).</li>
+    </ul>
+
+    <p>El reparto estático falla: si distribuyes la mitad inicial del árbol, puede que una mitad se resuelva en un segundo y la otra requiera horas. Hace falta <strong>balanceo dinámico</strong>: los procesos piden trabajo según lo terminan.</p>
+  </section>
+
+  <section>
+    <h2>Recorrido de árboles: backtracking</h2>
+    <p>Búsqueda exhaustiva con vuelta atrás. Para cada decisión, se prueban todas las opciones; si llega a un callejón sin salida, se retrocede.</p>
+
+    <h3>Ejemplo clásico: N reinas</h3>
+    <p>Colocar N reinas en un tablero N×N sin que se ataquen. Recorrido en profundidad probando posiciones, retrocediendo cuando una posición es inválida.</p>
+
+<pre><code><span class="kw">void</span> reinas(<span class="kw">int</span> *col, <span class="kw">int</span> fila, <span class="kw">int</span> n) {
+    <span class="kw">if</span> (fila == n) {
+        contar_solucion(col);
+        <span class="kw">return</span>;
+    }
+    <span class="kw">for</span> (<span class="kw">int</span> c = <span class="nm">0</span>; c &lt; n; c++) {
+        <span class="kw">if</span> (es_valida(col, fila, c)) {
+            col[fila] = c;
+            reinas(col, fila + <span class="nm">1</span>, n);   <span class="cm">// rama</span>
+        }
+    }
+}</code></pre>
+
+    <h3>Paralelización</h3>
+    <p>Cada rama del árbol de búsqueda puede explorarse en paralelo. Con OpenMP tareas:</p>
+
+<pre><code><span class="kw">void</span> reinas_par(<span class="kw">int</span> *col, <span class="kw">int</span> fila, <span class="kw">int</span> n, <span class="kw">int</span> nivel_corte) {
+    <span class="kw">if</span> (fila == n) { contar_solucion(col); <span class="kw">return</span>; }
+
+    <span class="kw">if</span> (fila &lt; nivel_corte) {
+        <span class="cm">// paralelizar: cada rama es una tarea</span>
+        <span class="kw">for</span> (<span class="kw">int</span> c = <span class="nm">0</span>; c &lt; n; c++) {
+            <span class="kw">if</span> (es_valida(col, fila, c)) {
+                <span class="kw">int</span> *col_local = copiar(col);
+                col_local[fila] = c;
+                <span class="pr">#pragma omp task</span> firstprivate(col_local)
+                reinas_par(col_local, fila + <span class="nm">1</span>, n, nivel_corte);
+            }
+        }
+    } <span class="kw">else</span> {
+        <span class="cm">// secuencial cuando el árbol ya es pequeño</span>
+        <span class="kw">for</span> (<span class="kw">int</span> c = <span class="nm">0</span>; c &lt; n; c++) {
+            <span class="kw">if</span> (es_valida(col, fila, c)) {
+                col[fila] = c;
+                reinas_par(col, fila + <span class="nm">1</span>, n, nivel_corte);
+            }
+        }
+    }
+}</code></pre>
+
+    <p>Decisiones de diseño: hasta qué profundidad paralelizar (umbral de corte), si copiar el estado (necesario en backtracking si las tareas son concurrentes), cómo combinar resultados.</p>
+  </section>
+
+  <section>
+    <h2>Branch &amp; Bound</h2>
+    <p>Variante del backtracking para problemas de <strong>optimización</strong>. Mantiene una cota global (la mejor solución conocida hasta el momento) y poda las ramas cuyo límite superior es peor que la cota actual.</p>
+
+    <h3>Reto en paralelo: la cota compartida</h3>
+    <p>La cota debe ser <strong>visible para todos los procesos</strong>:</p>
+    <ul>
+      <li>En memoria compartida: variable global con <code>atomic</code> o sección crítica para actualizar.</li>
+      <li>En memoria distribuida: hay que difundir las mejoras. Patrones típicos: anuncio asíncrono cuando se mejora la cota, sondeo periódico.</li>
+    </ul>
+
+    <h3>Riesgo: trabajo especulativo</h3>
+    <p>Sin coordinación, los procesos pueden explorar ramas que serían podadas si conocieran la cota actualizada de otro proceso. Hay un equilibrio entre coste de comunicación y trabajo especulativo: comunicar cada mejora es caro; comunicar poco aumenta el trabajo inútil.</p>
+  </section>
+
+  <section>
+    <h2>Trabajadores replicados: el patrón</h2>
+    <p>Generalización: tienes una <strong>bolsa de tareas</strong>. Los procesos cogen tareas, las procesan y posiblemente generan nuevas tareas, que devuelven a la bolsa. Cuando la bolsa está vacía y todos los procesos están ociosos, se termina.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Patrón de bolsa de tareas">
+        <style>
+          .bag { fill: #fdf6e3; stroke: #c5410f; stroke-width: 2; }
+          .wk { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.5; }
+          .task { fill: #fff; stroke: #c5410f; stroke-width: 1; }
+          .ed { stroke: #c5410f; stroke-width: 1.3; fill: none; marker-end: url(#aBT); }
+          .lb { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .ts { font: 500 9px 'JetBrains Mono', monospace; fill: #3d3d3d; text-anchor: middle; }
+          .ti { font: italic 600 11px 'Fraunces', serif; fill: #c5410f; }
+        </style>
+        <defs>
+          <marker id="aBT" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <!-- Bolsa central -->
+        <ellipse class="bag" cx="360" cy="120" rx="100" ry="55"/>
+        <text class="lb" x="360" y="105" style="font-size: 13px;">Bolsa de tareas</text>
+        <rect class="task" x="295" y="118" width="22" height="14"/><text class="ts" x="306" y="129">t₁</text>
+        <rect class="task" x="320" y="120" width="22" height="14"/><text class="ts" x="331" y="131">t₂</text>
+        <rect class="task" x="345" y="116" width="22" height="14"/><text class="ts" x="356" y="127">t₃</text>
+        <rect class="task" x="370" y="124" width="22" height="14"/><text class="ts" x="381" y="135">t₄</text>
+        <rect class="task" x="395" y="118" width="22" height="14"/><text class="ts" x="406" y="129">t₅</text>
+        <rect class="task" x="380" y="138" width="22" height="14"/><text class="ts" x="391" y="149">t₆</text>
+        <rect class="task" x="320" y="140" width="22" height="14"/><text class="ts" x="331" y="151">t₇</text>
+
+        <!-- Trabajadores -->
+        <rect class="wk" x="40" y="40" width="100" height="60" rx="3"/>
+        <text class="lb" x="90" y="65">Trabajador 1</text>
+        <text class="ts" x="90" y="83" style="font-style: italic;">procesando</text>
+
+        <rect class="wk" x="40" y="180" width="100" height="60" rx="3"/>
+        <text class="lb" x="90" y="205">Trabajador 2</text>
+        <text class="ts" x="90" y="223" style="font-style: italic;">cogiendo tarea</text>
+
+        <rect class="wk" x="580" y="40" width="100" height="60" rx="3"/>
+        <text class="lb" x="630" y="65">Trabajador 3</text>
+        <text class="ts" x="630" y="83" style="font-style: italic;">procesando</text>
+
+        <rect class="wk" x="580" y="180" width="100" height="60" rx="3"/>
+        <text class="lb" x="630" y="205">Trabajador 4</text>
+        <text class="ts" x="630" y="223" style="font-style: italic;">devolviendo nueva tarea</text>
+
+        <!-- Flechas -->
+        <path class="ed" d="M 270 110 L 145 75"/>
+        <text class="ti" x="200" y="80">tarea</text>
+        <path class="ed" d="M 145 210 L 270 145"/>
+        <text class="ti" x="200" y="200">pide</text>
+        <path class="ed" d="M 450 100 L 575 70"/>
+        <text class="ti" x="510" y="80">tarea</text>
+        <path class="ed" d="M 575 215 L 450 150"/>
+        <text class="ti" x="510" y="200">añade</text>
+
+        <text class="ti" x="360" y="195" style="text-anchor: middle;">cuando la bolsa está vacía y todos ociosos → fin</text>
+      </svg>
+      <p class="caption">Patrón de bolsa de tareas: balanceo automático porque cada trabajador coge nueva tarea cuando ha terminado. Adecuado para cargas impredecibles.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Implementación maestro-esclavo</h2>
+    <p>La forma más común. Un proceso (maestro) gestiona la bolsa; los demás (esclavos) le piden tareas y le devuelven resultados.</p>
+
+<pre><code><span class="cm">// Maestro (rank 0)</span>
+<span class="kw">while</span> (hay_tareas() || trabajadores_ocupados &gt; <span class="nm">0</span>) {
+    <span class="fn">MPI_Recv</span>(&amp;msg, ..., MPI_ANY_SOURCE, ...);
+    <span class="kw">int</span> esclavo = msg.source;
+
+    <span class="kw">if</span> (es_resultado(msg)) {
+        procesar_resultado(msg);
+        trabajadores_ocupados--;
+    }
+
+    <span class="kw">if</span> (hay_tareas()) {
+        tarea_t t = sacar_tarea();
+        <span class="fn">MPI_Send</span>(&amp;t, ..., esclavo, ...);
+        trabajadores_ocupados++;
+    } <span class="kw">else</span> {
+        <span class="fn">MPI_Send</span>(&amp;fin, ..., esclavo, ...);
+    }
+}
+
+<span class="cm">// Esclavo (rank &gt; 0)</span>
+<span class="kw">while</span> (<span class="nm">1</span>) {
+    <span class="fn">MPI_Send</span>(&amp;pet, ..., <span class="nm">0</span>, ...);   <span class="cm">// pedir trabajo</span>
+    <span class="fn">MPI_Recv</span>(&amp;msg, ..., <span class="nm">0</span>, ...);
+    <span class="kw">if</span> (msg.tipo == FIN) <span class="kw">break</span>;
+    resultado_t r = procesar(msg.tarea);
+    <span class="fn">MPI_Send</span>(&amp;r, ..., <span class="nm">0</span>, ...);    <span class="cm">// devolver resultado</span>
+}</code></pre>
+
+    <h3>Ventajas</h3>
+    <ul>
+      <li>Balanceo de carga automático: los esclavos rápidos procesan más tareas.</li>
+      <li>Tolerante a heterogeneidad: si los procesos están en máquinas distintas con velocidades distintas, no importa.</li>
+      <li>Sencillo de implementar y depurar.</li>
+    </ul>
+
+    <h3>Desventajas</h3>
+    <ul>
+      <li>El maestro es un <strong>cuello de botella</strong>: con muchos esclavos, no le da tiempo a atender a todos.</li>
+      <li>El maestro está ocioso casi todo el tiempo (solo gestiona, no calcula): malgasta un proceso.</li>
+      <li>Si la red es lenta, las peticiones penalizan al esclavo.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Esquemas descentralizados</h2>
+    <p>Para escalar más, se eliminan los cuellos de botella distribuyendo la bolsa.</p>
+
+    <h3>Bolsa distribuida</h3>
+    <p>Cada proceso tiene su propia mini-bolsa. Cuando se le acaba, pide trabajo a un vecino (<em>work stealing</em>). Es lo que hace internamente el runtime de tareas de OpenMP y librerías como Cilk o Intel TBB.</p>
+
+    <h3>Algoritmos de detección de terminación</h3>
+    <p>Sin maestro, decidir cuándo se ha acabado todo es un problema en sí mismo: un proceso puede creer que ha terminado, pero otro a punto de generar nuevas tareas para él. Algoritmos clásicos:</p>
+
+    <ul>
+      <li><strong>Dijkstra-Scholten</strong>: token que circula. Si vuelve sin actividad, se acabó.</li>
+      <li><strong>Conteo distribuido</strong>: cada proceso cuenta tareas creadas y completadas; cuando la suma global es 0, fin.</li>
+    </ul>
+
+    <div class="learning-hint">
+      Estos algoritmos son sutiles. Implementarlos correctamente es un buen ejercicio, pero en la práctica conviene usar librerías que ya los traen (la propia OpenMP, MPI's distributed graph topology, frameworks como Charm++).
+    </div>
+  </section>
+
+  <section>
+    <h2>Cuándo elegir cada variante</h2>
+
+    <table>
+      <tr><th>Situación</th><th>Esquema recomendado</th></tr>
+      <tr>
+        <td>Pocos procesos, tareas medianas</td>
+        <td>Maestro-esclavo simple</td>
+      </tr>
+      <tr>
+        <td>Muchos procesos, tareas pequeñas</td>
+        <td>Bolsa distribuida con work stealing</td>
+      </tr>
+      <tr>
+        <td>Memoria compartida</td>
+        <td>OpenMP <code>task</code> (lo gestiona el runtime)</td>
+      </tr>
+      <tr>
+        <td>Tareas que generan tareas</td>
+        <td>Recursivo + bolsa local + work stealing</td>
+      </tr>
+      <tr>
+        <td>Branch &amp; bound con cota global</td>
+        <td>Maestro-esclavo con difusión periódica</td>
+      </tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Repaso: los esquemas algorítmicos del bloque IV</h2>
+    <p>Hemos visto seis grandes esquemas. La siguiente tabla los reúne con su característica principal:</p>
+
+    <table>
+      <tr><th>Sesión</th><th>Esquema</th><th>Característica clave</th></tr>
+      <tr><td>8</td><td>Paralelismo de datos</td><td>Mismo trabajo sobre datos distintos</td></tr>
+      <tr><td>9</td><td>Relajado</td><td>Sin coordinación durante el cómputo</td></tr>
+      <tr><td>9</td><td>Síncrono</td><td>Avance por fases con barreras</td></tr>
+      <tr><td>10</td><td>Grafo / árbol</td><td>Dependencias arbitrarias</td></tr>
+      <tr><td>10</td><td>Pipeline</td><td>Cadena lineal de etapas</td></tr>
+      <tr><td>11</td><td>Divide y vencerás</td><td>Subproblemas independientes recursivos</td></tr>
+      <tr><td>11</td><td>Programación dinámica</td><td>Subproblemas solapados, tabla</td></tr>
+      <tr><td>12</td><td>Trabajadores replicados</td><td>Balanceo dinámico</td></tr>
+    </table>
+
+    <p>Para un problema concreto, el primer ejercicio del diseñador es identificar a cuál de estos esquemas (o combinación) se acerca. Una vez fijado, las decisiones de comunicación y mapeo se siguen casi por defecto.</p>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">Esta sesión cierra los esquemas algorítmicos. Las preguntas mezclan ideas de toda esta parte del curso.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">¿Qué es el balanceo dinámico de carga?</div>
+        <div class="answer">Esquema en el que los procesos piden trabajo según lo van terminando, en lugar de recibir un reparto fijo al principio. Imprescindible cuando los costes de las tareas son impredecibles o se generan tareas durante la ejecución.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Cuál es la diferencia entre backtracking y branch &amp; bound?</div>
+        <div class="answer">Ambos exploran árboles. Backtracking busca soluciones (válidas o todas las soluciones). Branch &amp; bound resuelve problemas de optimización: mantiene una cota de la mejor solución actual y poda ramas que no pueden mejorarla.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué la cota global en branch &amp; bound paralelo es problemática?</div>
+        <div class="answer">Tiene que ser visible para todos los procesos. Si no se difunde, los procesos exploran ramas que ya podrían podarse (trabajo especulativo). Si se difunde con demasiada frecuencia, se penalizan las comunicaciones. Hay un equilibrio.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Describe el patrón maestro-esclavo en cuatro líneas.</div>
+        <div class="answer">Un proceso (maestro) mantiene una bolsa de tareas. Los demás (esclavos) le piden trabajo, lo procesan y le devuelven resultados. El maestro asigna nueva tarea con cada resultado. Termina cuando bolsa vacía y nadie procesa.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Cuáles son las dos limitaciones principales del maestro-esclavo?</div>
+        <div class="answer">(1) El maestro es cuello de botella con muchos esclavos (no puede atender a todos). (2) Un proceso entero se dedica solo a gestionar, no calcula: malgasta hardware. Se mitigan con bolsas distribuidas y work stealing.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es el work stealing?</div>
+        <div class="answer">Técnica de balanceo distribuido: cada proceso tiene su propia mini-bolsa de tareas. Cuando se queda sin trabajo, «roba» tareas de la bolsa de un vecino. Es lo que hace internamente OpenMP con sus tareas, Cilk, Intel TBB.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué la detección de terminación en sistemas descentralizados es no trivial?</div>
+        <div class="answer">Sin maestro central, un proceso puede creer que terminó pero otro está a punto de generar tareas para él. Hace falta un algoritmo distribuido (Dijkstra-Scholten, conteo distribuido) que garantice que la suma global de tareas pendientes es cero.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué N reinas es un problema natural para trabajadores replicados?</div>
+        <div class="answer">El árbol de búsqueda crece de forma muy desigual: algunas ramas se podan enseguida, otras llegan hasta la profundidad N. Repartir estáticamente las ramas iniciales daría un desequilibrio enorme. El balanceo dinámico iguala los tiempos.</div>
+      </div>
+    </div>
+  </div>
+
+  <section class="quiz-section">
+    <h2 style="counter-increment: none; margin-top: 0; padding-top: 0;">Quiz final entreverado del curso</h2>
+    <p style="font-style: italic; color: var(--ink-soft); margin-bottom: 2rem; font-family: var(--font-serif);">Ocho preguntas que mezclan deliberadamente todas las sesiones. Discriminar entre conceptos parecidos —MPI vs OpenMP, datos vs tareas, síncrono vs relajado— es la habilidad clave que el examen evalúa. Responde primero, comprueba después.</p>
+
+    <div class="quiz-q">
+      <div class="qnum">PREGUNTA 1</div>
+      <div class="qtext">En un cluster de 50 nodos, cada uno con 8 cores y 1 GPU, ¿qué combinación de paradigmas aprovecha todo el hardware?</div>
+      <ul class="options">
+        <li class="opt">Solo MPI con 400 procesos</li>
+        <li class="opt" data-correct="true">MPI entre nodos + OpenMP entre cores + CUDA en la GPU</li>
+        <li class="opt">Solo OpenMP con 400 hilos</li>
+        <li class="opt">Solo CUDA</li>
+      </ul>
+      <div class="explain">El triple híbrido: un proceso MPI por nodo, OpenMP entre los 8 cores del nodo, CUDA para las partes regulares en la GPU. Cada paradigma ataca un nivel del hardware.</div>
+    </div>
+
+    <div class="quiz-q">
+      <div class="qnum">PREGUNTA 2</div>
+      <div class="qtext">Tienes una suma de 10⁹ datos. El tiempo paralelo aproximado es (n/p)·t<sub>c</sub> + log p · (t<sub>s</sub>+t<sub>w</sub>). ¿Qué término domina con p = 8?</div>
+      <ul class="options">
+        <li class="opt" data-correct="true">(n/p)·t<sub>c</sub>, porque n es enorme y log 8 = 3</li>
+        <li class="opt">log p · (t<sub>s</sub>+t<sub>w</sub>), siempre domina la comunicación</li>
+        <li class="opt">Los dos por igual</li>
+        <li class="opt">No se puede saber sin medir</li>
+      </ul>
+      <div class="explain">Con n = 10⁹ y p = 8, el cómputo n/p = 1.25·10⁸ es muy superior a log p · (t<sub>s</sub>+t<sub>w</sub>) salvo en redes patológicas. El paralelismo será casi ideal.</div>
+    </div>
+
+    <div class="quiz-q">
+      <div class="qnum">PREGUNTA 3</div>
+      <div class="qtext">¿Qué directiva OpenMP usarías para evitar la condición de carrera al actualizar un contador único desde varios hilos?</div>
+      <ul class="options">
+        <li class="opt"><code>#pragma omp parallel for</code></li>
+        <li class="opt" data-correct="true"><code>#pragma omp atomic</code> antes de la actualización</li>
+        <li class="opt"><code>#pragma omp single</code></li>
+        <li class="opt"><code>#pragma omp barrier</code></li>
+      </ul>
+      <div class="explain"><code>atomic</code> es la opción más ligera para una operación simple como un incremento. <code>critical</code> también funcionaría pero es más costoso. <code>single</code> haría que solo un hilo incrementara —no es lo que queremos—.</div>
+    </div>
+
+    <div class="quiz-q">
+      <div class="qnum">PREGUNTA 4</div>
+      <div class="qtext">En MPI, ¿qué función envía un mismo valor desde un proceso a todos los demás del comunicador?</div>
+      <ul class="options">
+        <li class="opt"><code>MPI_Scatter</code></li>
+        <li class="opt" data-correct="true"><code>MPI_Bcast</code></li>
+        <li class="opt"><code>MPI_Allreduce</code></li>
+        <li class="opt"><code>MPI_Send</code> en bucle</li>
+      </ul>
+      <div class="explain"><code>MPI_Bcast</code> es broadcast: uno a todos con el mismo dato. <code>MPI_Scatter</code> reparte trozos distintos a cada uno. <code>MPI_Send</code> en bucle funciona pero es muy ineficiente: el broadcast usa árboles para difundir en log p.</div>
+    </div>
+
+    <div class="quiz-q">
+      <div class="qnum">PREGUNTA 5</div>
+      <div class="qtext">Ley de Amdahl: si tu programa tiene un 10% inherentemente secuencial, ¿cuál es el speed-up máximo posible con infinitos procesadores?</div>
+      <ul class="options">
+        <li class="opt">100</li>
+        <li class="opt" data-correct="true">10</li>
+        <li class="opt">Infinito</li>
+        <li class="opt">90</li>
+      </ul>
+      <div class="explain">El speed-up está acotado por 1/f. Con f = 0.10, el límite es 1/0.10 = 10. Aunque tuvieras 1000 procesadores, la parte secuencial impediría superar speed-up 10.</div>
+    </div>
+
+    <div class="quiz-q">
+      <div class="qnum">PREGUNTA 6</div>
+      <div class="qtext">Quieres resolver el problema de las N reinas para N = 14. El árbol de búsqueda crece de forma desigual y se podan muchas ramas. ¿Qué esquema algorítmico es más apropiado?</div>
+      <ul class="options">
+        <li class="opt">Paralelismo de datos puro</li>
+        <li class="opt">Pipeline</li>
+        <li class="opt" data-correct="true">Trabajadores replicados con bolsa de tareas</li>
+        <li class="opt">Programación dinámica</li>
+      </ul>
+      <div class="explain">El recorrido del árbol es impredecible: el balanceo estático fallaría (unas ramas grandes, otras minúsculas). La bolsa de tareas permite que los procesos cojan trabajo según terminan, igualando los tiempos.</div>
+    </div>
+
+    <div class="quiz-q">
+      <div class="qnum">PREGUNTA 7</div>
+      <div class="qtext">En una multiplicación de matrices distribuida, A se reparte por filas y B se replica en todos los procesos. ¿Qué operación colectiva MPI usas para repartir A?</div>
+      <ul class="options">
+        <li class="opt"><code>MPI_Bcast</code></li>
+        <li class="opt" data-correct="true"><code>MPI_Scatter</code></li>
+        <li class="opt"><code>MPI_Reduce</code></li>
+        <li class="opt"><code>MPI_Allgather</code></li>
+      </ul>
+      <div class="explain"><code>MPI_Scatter</code> reparte trozos distintos del root a cada proceso (cada uno recibe sus filas). Para B, que se replica, sí se usa <code>MPI_Bcast</code>. Para recoger C al final, <code>MPI_Gather</code>.</div>
+    </div>
+
+    <div class="quiz-q">
+      <div class="qnum">PREGUNTA 8</div>
+      <div class="qtext">¿Cuál es la diferencia clave entre divide y vencerás y programación dinámica?</div>
+      <ul class="options">
+        <li class="opt">DV es recursivo y PD es iterativo</li>
+        <li class="opt">DV usa memoización y PD no</li>
+        <li class="opt" data-correct="true">En DV los subproblemas son independientes; en PD se solapan y se reutilizan</li>
+        <li class="opt">DV es para minimización y PD para maximización</li>
+      </ul>
+      <div class="explain">DV: subproblemas independientes, cada uno aparece una vez, ideal para paralelizar. PD: subproblemas solapados, se calculan una vez y se reutilizan vía tabla. Esa reutilización es lo que da eficiencia a la PD pero complica su paralelización (hay dependencias).</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Cómo seguir consolidando lo aprendido</h2>
+    <p>Has llegado al final de las doce sesiones. Pero el aprendizaje no acaba aquí; en realidad, el efecto de espaciado dice que apenas empieza:</p>
+
+    <ul>
+      <li><strong>Espacia el repaso</strong>. Vuelve a estas páginas en 2-3 días, luego en una semana, luego en tres semanas. Cada vez que recuerdes lo que olvidaste, la memoria se consolida.</li>
+      <li><strong>Practica con las prácticas</strong>. Aplicar los conceptos en código es la mejor consolidación: implementa un algoritmo nuevo cada semana usando un esquema distinto.</li>
+      <li><strong>Mezcla los temas</strong> al estudiar. No repases una sesión entera; mezcla preguntas de varias. La interferencia entrena la discriminación.</li>
+      <li><strong>Genera tus propios ejemplos</strong>. Cada vez que leas un esquema, inventa un problema concreto que encaje en él. La elaboración es la técnica con más respaldo empírico para aprendizaje profundo.</li>
+      <li><strong>Explícaselo a alguien</strong>. Lo que se enseña se aprende mejor. Si no tienes a quien, escríbelo como si lo explicaras.</li>
+    </ul>
+
+    <div class="learning-hint">
+      Los estudios sobre técnicas de aprendizaje son consistentes en algo: lo que parece más cómodo —releer, marcar en amarillo, copiar apuntes— es lo menos efectivo. Lo incómodo —recordar de memoria, equivocarse, esperar a olvidar antes de repasar— es lo que funciona.
+    </div>
+  </section>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_11.html">
+      <div class="nav-label">← Sesión 11</div>
+      <div class="nav-title">Divide y vencerás · PD</div>
+    </a>
+    <a class="nav-link next" href="index.html">
+      <div class="nav-label">↺ Volver al índice</div>
+      <div class="nav-title">Empezar otro repaso</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

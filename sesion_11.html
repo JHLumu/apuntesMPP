@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 11 · Divide y vencerás · PD — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 11 · BLOQUE IV</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Divide y vencerás<br>· Programación dinámica</h1>
+    <p class="session-subtitle">Dos esquemas algorítmicos clásicos del mundo secuencial. Esta sesión analiza qué oportunidades de paralelismo ofrecen y cuándo merece la pena explotarlas.</p>
+  </header>
+
+  <section>
+    <h2>Divide y vencerás (DV)</h2>
+    <p>El esquema más antiguo y, según Foster, «el más adecuado para paralelizar». Se puede argumentar que todos los algoritmos paralelos siguen alguna variante.</p>
+
+    <div class="key-concept">
+      <span class="label">PATRÓN GENERAL</span>
+      <h3>Dividir → Resolver → Combinar</h3>
+      <ol>
+        <li><strong>Dividir</strong> un problema P en subproblemas P<sub>1</sub>, P<sub>2</sub>, ..., P<sub>n</sub>.</li>
+        <li><strong>Resolver</strong> cada subproblema P<sub>i</sub>, obteniendo subsoluciones s<sub>i</sub>.</li>
+        <li><strong>Combinar</strong> las soluciones parciales s<sub>1</sub>, s<sub>2</sub>, ..., s<sub>n</sub> en la solución global de P.</li>
+      </ol>
+    </div>
+
+    <h3>Por qué se paraleliza tan bien</h3>
+    <p>Los subproblemas son <strong>independientes</strong> entre sí: cada uno se puede resolver sin información de los demás. Eso da paralelismo de tareas natural sin sincronización durante la fase de resolución.</p>
+
+    <h3>Cuándo funciona</h3>
+    <p>El éxito del método depende de dos condiciones:</p>
+    <ul>
+      <li>La <strong>división</strong> es eficiente (idealmente lineal o logarítmica en el tamaño del problema).</li>
+      <li>La <strong>combinación</strong> también lo es. Si combinar las subsoluciones es tan caro como resolver el problema, no se gana nada.</li>
+    </ul>
+
+    <div class="diagram">
+      <svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Árbol de divide y vencerás">
+        <style>
+          .nd { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .ed { stroke: #1a1a1a; stroke-width: 1.5; fill: none; }
+          .lb { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .ti { font: italic 600 10px 'Fraunces', serif; fill: #c5410f; text-anchor: middle; }
+        </style>
+
+        <rect class="nd" x="320" y="20" width="80" height="30" rx="3"/>
+        <text class="lb" x="360" y="40">P (n)</text>
+
+        <rect class="nd" x="220" y="80" width="70" height="30" rx="3"/>
+        <text class="lb" x="255" y="100">P₁ (n/2)</text>
+        <rect class="nd" x="430" y="80" width="70" height="30" rx="3"/>
+        <text class="lb" x="465" y="100">P₂ (n/2)</text>
+
+        <rect class="nd" x="170" y="140" width="60" height="25" rx="3"/>
+        <text class="lb" x="200" y="158" style="font-size: 9px;">P₁₁ (n/4)</text>
+        <rect class="nd" x="240" y="140" width="60" height="25" rx="3"/>
+        <text class="lb" x="270" y="158" style="font-size: 9px;">P₁₂ (n/4)</text>
+        <rect class="nd" x="380" y="140" width="60" height="25" rx="3"/>
+        <text class="lb" x="410" y="158" style="font-size: 9px;">P₂₁ (n/4)</text>
+        <rect class="nd" x="450" y="140" width="60" height="25" rx="3"/>
+        <text class="lb" x="480" y="158" style="font-size: 9px;">P₂₂ (n/4)</text>
+
+        <text class="lb" x="200" y="200" style="font-size: 14px;">⋮</text>
+        <text class="lb" x="270" y="200" style="font-size: 14px;">⋮</text>
+        <text class="lb" x="410" y="200" style="font-size: 14px;">⋮</text>
+        <text class="lb" x="480" y="200" style="font-size: 14px;">⋮</text>
+
+        <text class="lb" x="200" y="245" style="font-size: 14px;">●</text>
+        <text class="lb" x="270" y="245" style="font-size: 14px;">●</text>
+        <text class="lb" x="410" y="245" style="font-size: 14px;">●</text>
+        <text class="lb" x="480" y="245" style="font-size: 14px;">●</text>
+        <text class="ti" x="340" y="260">casos base: resolver directamente</text>
+
+        <path class="ed" d="M 350 50 L 270 80"/>
+        <path class="ed" d="M 380 50 L 460 80"/>
+        <path class="ed" d="M 245 110 L 200 140"/>
+        <path class="ed" d="M 270 110 L 270 140"/>
+        <path class="ed" d="M 455 110 L 410 140"/>
+        <path class="ed" d="M 475 110 L 480 140"/>
+
+        <text class="ti" x="630" y="40">divide ↓</text>
+        <text class="ti" x="630" y="160">combina ↑</text>
+        <text class="ti" x="630" y="100">resuelve →</text>
+      </svg>
+      <p class="caption">El árbol de descomposición. Cada nodo se puede ejecutar en paralelo con sus hermanos. Profundidad típica: log n para divisiones en dos.</p>
+    </div>
+
+    <h3>Ejemplo: ordenación rápida (quicksort)</h3>
+<pre><code><span class="kw">void</span> quicksort(<span class="kw">int</span> *a, <span class="kw">int</span> lo, <span class="kw">int</span> hi) {
+    <span class="kw">if</span> (lo &gt;= hi) <span class="kw">return</span>;
+    <span class="kw">int</span> p = particionar(a, lo, hi);
+
+    <span class="pr">#pragma omp task</span>
+    quicksort(a, lo, p - <span class="nm">1</span>);
+    <span class="pr">#pragma omp task</span>
+    quicksort(a, p + <span class="nm">1</span>, hi);
+    <span class="pr">#pragma omp taskwait</span>
+}
+
+<span class="cm">// Llamada inicial</span>
+<span class="pr">#pragma omp parallel</span>
+<span class="pr">#pragma omp single</span>
+quicksort(a, <span class="nm">0</span>, n - <span class="nm">1</span>);</code></pre>
+
+    <p>Las dos llamadas recursivas son independientes y se lanzan como tareas. OpenMP las asigna a hilos libres.</p>
+
+    <h3>Descomposición recursiva</h3>
+    <p>La división puede ser muy <strong>desigual</strong> e <strong>impredecible</strong>. En quicksort, una particion mal balanceada deja un lado con un elemento y otro con n−1. En árboles binarios, una rama puede ser mucho más profunda que la otra.</p>
+
+    <p>Implicaciones:</p>
+    <ul>
+      <li>En memoria compartida, las tareas OpenMP se gestionan automáticamente.</li>
+      <li>En memoria distribuida, hace falta un <strong>esquema de bolsa de tareas</strong> (sesión 12) para repartir el trabajo según se va generando.</li>
+      <li>Hay que decidir un <strong>umbral de corte</strong>: a partir de cierto tamaño, deja de paralelizar y resuelve secuencialmente. Las tareas demasiado pequeñas no compensan el overhead.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Más ejemplos de divide y vencerás paralelo</h2>
+
+    <h3>Mergesort paralelo</h3>
+    <p>La división es trivial (partir por la mitad). Las dos mitades se ordenan en paralelo. La combinación es la fusión (merge), que se puede a su vez paralelizar de forma más sofisticada.</p>
+
+    <h3>Suma en árbol</h3>
+    <p>Caso particular: dividir el array en dos mitades, sumar cada mitad en paralelo, combinar con una suma. Profundidad log n.</p>
+
+    <h3>Multiplicación de matrices por bloques (Strassen)</h3>
+    <p>El algoritmo de Strassen multiplica matrices con 7 multiplicaciones recursivas en lugar de 8. Cada multiplicación es independiente, así que se pueden paralelizar.</p>
+
+    <h3>Transformada rápida de Fourier (FFT)</h3>
+    <p>Cooley-Tukey divide la DFT de tamaño n en dos DFT de tamaño n/2 (pares e impares), las resuelve en paralelo y combina. Profundidad log n.</p>
+  </section>
+
+  <section>
+    <h2>Programación dinámica (PD)</h2>
+    <p>Esquema para problemas de <strong>optimización</strong> donde la solución se construye combinando soluciones de subproblemas <em>solapados</em>. Lo opuesto de divide y vencerás en un aspecto crucial: los subproblemas <strong>no son independientes</strong>.</p>
+
+    <div class="key-concept">
+      <span class="label">DIFERENCIA CLAVE CON DV</span>
+      <h3>Subproblemas solapados</h3>
+      <p>En DV cada subproblema aparece una vez. En PD un mismo subproblema se necesita en varios sitios, así que se calcula una vez y se reutiliza (memoización). Eso es lo que hace eficiente la PD pero también lo que <em>complica</em> su paralelización.</p>
+    </div>
+
+    <h3>Estructura típica</h3>
+    <ol>
+      <li>Definir una <strong>ecuación de recurrencia</strong> que expresa la solución óptima en función de soluciones de subproblemas.</li>
+      <li>Calcular las soluciones de los subproblemas en orden, normalmente llenando una tabla.</li>
+      <li>Recuperar la solución óptima desde la tabla.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Ejemplo: devolución de monedas</h2>
+    <p>Dadas <code>n</code> monedas de valores <code>v<sub>1</sub>, ..., v<sub>n</sub></code> (con cantidad ilimitada), y una cantidad <code>P</code>, encontrar el número mínimo de monedas para llegar a P.</p>
+
+    <div class="key-concept">
+      <span class="label">ECUACIÓN DE RECURRENCIA</span>
+      <h3>Cambio(i, Q) = min<sub>k=0,...,⌊Q/v<sub>i</sub>⌋</sub> { Cambio(i−1, Q − k·v<sub>i</sub>) + k }</h3>
+      <p>Dónde k es cuántas monedas del tipo i se usan. El caso base es Cambio(0, Q): solo si Q = 0 es válido (0 monedas).</p>
+    </div>
+
+    <h3>La tabla</h3>
+    <p>Se construye una tabla de tamaño <code>(n+1) × (P+1)</code>:</p>
+
+    <table style="font-family: var(--font-mono); text-align: center;">
+      <tr><th>i \ Q</th><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th></tr>
+      <tr><td>v=1</td><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td></tr>
+      <tr><td>v=4</td><td>0</td><td>1</td><td>2</td><td>3</td><td>1</td><td>2</td><td>3</td><td>4</td><td>2</td></tr>
+      <tr><td>v=6</td><td>0</td><td>1</td><td>2</td><td>3</td><td>1</td><td>2</td><td>1</td><td>2</td><td>2</td></tr>
+    </table>
+
+    <p>Para n=3, P=8, v=(1,4,6): el mínimo es 2 (una de 4 y una de 4? No, sería una de 6 y dos de 1, o dos de 4. Ambas dan 2).</p>
+
+    <h3>Paralelización</h3>
+    <p>Cada fila depende solo de la anterior, así que se podría pensar en paralelizar dentro de la fila. Pero hay un detalle: la celda <code>tabla[i][Q]</code> necesita <code>tabla[i-1][Q − k·v<sub>i</sub>]</code> para varios valores de k. <strong>El patrón de comunicaciones varía</strong> con la celda.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Patrón de dependencias en PD">
+        <style>
+          .cl { fill: #fff; stroke: #1a1a1a; stroke-width: 1; }
+          .cur { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .src { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1; }
+          .lb { font: 600 9px 'JetBrains Mono', monospace; fill: #1a1a1a; text-anchor: middle; }
+          .ed { stroke: #c5410f; stroke-width: 1; fill: none; marker-end: url(#aPD); }
+          .ti { font: italic 600 10px 'Fraunces', serif; fill: #3d3d3d; }
+        </style>
+        <defs>
+          <marker id="aPD" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+            <path d="M0,0 L5,2.5 L0,5 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <text class="ti" x="20" y="30">fila i−1</text>
+        <g>
+          <rect class="src" x="80" y="40" width="40" height="25"/><text class="lb" x="100" y="57">0</text>
+          <rect class="src" x="120" y="40" width="40" height="25"/><text class="lb" x="140" y="57">1</text>
+          <rect class="src" x="160" y="40" width="40" height="25"/><text class="lb" x="180" y="57">2</text>
+          <rect class="cl" x="200" y="40" width="40" height="25"/><text class="lb" x="220" y="57">3</text>
+          <rect class="cl" x="240" y="40" width="40" height="25"/><text class="lb" x="260" y="57">4</text>
+          <rect class="src" x="280" y="40" width="40" height="25"/><text class="lb" x="300" y="57">5</text>
+          <rect class="cl" x="320" y="40" width="40" height="25"/><text class="lb" x="340" y="57">6</text>
+          <rect class="cl" x="360" y="40" width="40" height="25"/><text class="lb" x="380" y="57">7</text>
+          <rect class="cl" x="400" y="40" width="40" height="25"/><text class="lb" x="420" y="57">8</text>
+        </g>
+
+        <text class="ti" x="20" y="130">fila i, v<sub>i</sub>=3</text>
+        <rect class="cur" x="320" y="120" width="40" height="25"/><text class="lb" x="340" y="137">6</text>
+
+        <path class="ed" d="M 340 120 L 100 65"/>
+        <path class="ed" d="M 340 120 L 180 65"/>
+        <path class="ed" d="M 340 120 L 300 65"/>
+        <path class="ed" d="M 340 120 L 340 65"/>
+
+        <text class="ti" x="350" y="170">para calcular tabla[i][6] con v<sub>i</sub>=3, se necesitan tabla[i−1][0], [3], [6]</text>
+        <text class="ti" x="20" y="190">→ patrón de comunicaciones depende del valor de v<sub>i</sub></text>
+      </svg>
+      <p class="caption">Cada celda necesita varias celdas de la fila anterior, con saltos de tamaño v<sub>i</sub>. El patrón cambia entre filas, lo que complica la asignación estática a procesos.</p>
+    </div>
+
+    <p>Estrategia común: <strong>paralelizar por celdas dentro de cada fila</strong> con una barrera al final. Cada fila es una fase. Funciona pero requiere comunicaciones complejas si los datos están distribuidos.</p>
+  </section>
+
+  <section>
+    <h2>Otros problemas clásicos de PD paralelizables</h2>
+
+    <ul>
+      <li><strong>Distancia de edición</strong> (Levenshtein): tabla 2D, dependencias en diagonal. Se paraleliza por antidiagonales.</li>
+      <li><strong>Camino más largo en DAG</strong>: topological sort + paralelismo por niveles.</li>
+      <li><strong>Multiplicación de cadenas de matrices</strong>: tabla 2D, dependencias en bloques diagonales.</li>
+      <li><strong>Mochila 0/1</strong>: dependencias filas anteriores.</li>
+      <li><strong>Algoritmo de Floyd-Warshall</strong> (caminos mínimos): tres bucles anidados, el externo serializado, los dos internos paralelizables.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Comparativa entre los dos esquemas</h2>
+
+    <table>
+      <tr><th></th><th>Divide y Vencerás</th><th>Programación Dinámica</th></tr>
+      <tr>
+        <td><strong>Estructura</strong></td>
+        <td>Árbol recursivo de subproblemas</td>
+        <td>Tabla de subproblemas solapados</td>
+      </tr>
+      <tr>
+        <td><strong>Subproblemas</strong></td>
+        <td>Independientes, no se repiten</td>
+        <td>Solapados, se almacenan en tabla</td>
+      </tr>
+      <tr>
+        <td><strong>Paralelismo natural</strong></td>
+        <td>Alto: subárboles independientes</td>
+        <td>Limitado: hay que respetar dependencias</td>
+      </tr>
+      <tr>
+        <td><strong>Patrón típico</strong></td>
+        <td>Tareas OpenMP, bolsa de tareas en MPI</td>
+        <td>Paralelismo síncrono por niveles/filas</td>
+      </tr>
+      <tr>
+        <td><strong>Granularidad</strong></td>
+        <td>Decreciente al bajar el árbol</td>
+        <td>Constante o fácilmente regulable</td>
+      </tr>
+      <tr>
+        <td><strong>Balanceo de carga</strong></td>
+        <td>Difícil: subárboles desiguales</td>
+        <td>Fácil: tabla regular</td>
+      </tr>
+    </table>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">Estos dos esquemas se confunden con frecuencia en exámenes. La pregunta clave para distinguirlos: ¿los subproblemas se reutilizan?</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">¿Cuáles son los tres pasos del esquema divide y vencerás?</div>
+        <div class="answer">Dividir (descomponer en subproblemas), Resolver (cada subproblema, normalmente de forma recursiva), Combinar (juntar las subsoluciones en la solución global).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué divide y vencerás se paraleliza tan bien?</div>
+        <div class="answer">Porque los subproblemas son independientes entre sí. Cada uno se puede resolver sin necesitar información de los demás. Las dos llamadas recursivas pueden ejecutarse en paralelo en hilos o procesos distintos.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué condiciones tienen que cumplirse para que DV sea eficiente?</div>
+        <div class="answer">Que la división sea eficiente (lineal o logarítmica en el tamaño) y que la combinación también lo sea. Si combinar las subsoluciones cuesta tanto como resolver el problema completo, no se gana nada.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es el umbral de corte en DV paralelo?</div>
+        <div class="answer">Tamaño a partir del cual deja de tener sentido seguir paralelizando: el coste de gestionar la tarea (crear hilo, sincronizar) supera al de resolver el subproblema secuencialmente. Suele determinarse experimentalmente.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué distingue la programación dinámica del divide y vencerás?</div>
+        <div class="answer">En PD los subproblemas se <strong>solapan</strong>: el mismo subproblema aparece en varios lugares de la recursión. Se calcula una vez y se reutiliza (memoización). En DV cada subproblema es independiente y se resuelve una sola vez.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué la PD es más difícil de paralelizar que DV?</div>
+        <div class="answer">Porque los subproblemas no son independientes: cada celda de la tabla depende de otras. Hay que respetar el orden, normalmente con una fase por nivel/fila/antidiagonal. Eso limita el paralelismo disponible.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">En el problema de devolución de monedas, ¿cómo se suele paralelizar?</div>
+        <div class="answer">Por celdas dentro de cada fila, con barrera al final. Cada fila se calcula en paralelo, esperando a que la anterior esté completa. Las dependencias entre filas obligan a esa fase de sincronización.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué construcciones de OpenMP son las naturales para implementar DV paralelo?</div>
+        <div class="answer">Las tareas: <code>#pragma omp task</code> para lanzar cada llamada recursiva, <code>#pragma omp taskwait</code> para esperar a que terminen antes de combinar. La región <code>parallel</code> con <code>single</code> crea el equipo de hilos que ejecutará las tareas.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Repaso de la sesión 10: ¿qué tiene en común DV con el paralelismo en árbol?</div>
+        <div class="answer">Mismo patrón estructural: un árbol de tareas donde los hijos son independientes pero dependen del padre. En DV el árbol se construye por la recursión; en otras aplicaciones (clases de equivalencia) viene dado por el problema.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Cita tres problemas clásicos de PD paralelizables.</div>
+        <div class="answer">Distancia de edición, multiplicación de cadenas de matrices, mochila 0/1, Floyd-Warshall, alineamiento de secuencias (Needleman-Wunsch). Todos comparten la estructura de tabla con dependencias regulares.</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_10.html">
+      <div class="nav-label">← Sesión 10</div>
+      <div class="nav-title">Grafo y pipeline</div>
+    </a>
+    <a class="nav-link next" href="sesion_12.html">
+      <div class="nav-label">Sesión 12 →</div>
+      <div class="nav-title">Trabajadores replicados</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

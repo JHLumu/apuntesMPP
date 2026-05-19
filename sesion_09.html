@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 09 · Relajado y síncrono — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 09 · BLOQUE IV</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Paralelismo<br>relajado y síncrono</h1>
+    <p class="session-subtitle">Dos extremos en la coordinación entre procesos. Saber dónde está el algoritmo en este eje determina cuánta sincronización necesitas y cuántas cosas pueden ir mal.</p>
+  </header>
+
+  <section>
+    <h2>El eje de coordinación</h2>
+    <p>Los esquemas algorítmicos paralelos se pueden situar a lo largo de un eje según cuánta coordinación necesitan los procesos entre sí:</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 160" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Eje de coordinación">
+        <style>
+          .ax { stroke: #1a1a1a; stroke-width: 2; fill: none; marker-end: url(#arE); }
+          .tk { stroke: #1a1a1a; stroke-width: 1; }
+          .lb { font: 700 13px 'Fraunces', serif; fill: #1a1a1a; text-anchor: middle; }
+          .lbs { font: 500 10px 'Inter Tight', sans-serif; fill: #3d3d3d; text-anchor: middle; }
+          .lbn { font: 600 11px 'JetBrains Mono', monospace; fill: #c5410f; text-anchor: middle; letter-spacing: 0.05em; }
+        </style>
+        <defs>
+          <marker id="arE" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#1a1a1a"/>
+          </marker>
+        </defs>
+
+        <path class="ax" d="M 50 80 L 670 80"/>
+        <line class="tk" x1="150" y1="70" x2="150" y2="90"/>
+        <line class="tk" x1="350" y1="70" x2="350" y2="90"/>
+        <line class="tk" x1="550" y1="70" x2="550" y2="90"/>
+
+        <text class="lb" x="150" y="50">Relajado</text>
+        <text class="lbs" x="150" y="110">poca/ninguna</text>
+        <text class="lbs" x="150" y="125">coordinación</text>
+        <text class="lbn" x="150" y="145">vergonzosamente paralelo</text>
+
+        <text class="lb" x="350" y="50">Síncrono</text>
+        <text class="lbs" x="350" y="110">sincronización por</text>
+        <text class="lbs" x="350" y="125">fases (barreras)</text>
+        <text class="lbn" x="350" y="145">stencil, BSP</text>
+
+        <text class="lb" x="550" y="50">Estrecho</text>
+        <text class="lbs" x="550" y="110">comunicación</text>
+        <text class="lbs" x="550" y="125">continua</text>
+        <text class="lbn" x="550" y="145">pipeline, grafo (s. 10)</text>
+      </svg>
+      <p class="caption">A más coordinación, más facilidad para razonar la corrección y más dificultad para escalar. El extremo izquierdo da el mejor speed-up; el derecho exige más cuidado.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Paralelismo relajado</h2>
+    <p>Los procesos trabajan con <strong>poca o ninguna interacción</strong>. Cada uno realiza su parte del trabajo de forma casi independiente. Si pudieras escribir el algoritmo como «p problemas independientes resueltos en paralelo», es relajado.</p>
+
+    <h3>Características</h3>
+    <ul>
+      <li>No hay coordinación durante el cómputo o es muy esporádica.</li>
+      <li>Comunicaciones reducidas: típicamente solo al inicio (reparto) y al final (recolección).</li>
+      <li>Excelente speed-up: si no hay comunicación, se acerca al ideal.</li>
+      <li>Tolera bien la heterogeneidad: los procesos no se esperan unos a otros.</li>
+    </ul>
+
+    <h3>Ejemplos</h3>
+
+    <h4>Ordenación por rango</h4>
+    <p>Para ordenar un array <code>a</code> de tamaño <code>n</code>, cada elemento <code>a[i]</code> calcula su posición final contando cuántos elementos hay menores que él:</p>
+<pre><code><span class="pr">#pragma omp parallel for</span>
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++) {
+    <span class="kw">int</span> rango = <span class="nm">0</span>;
+    <span class="kw">for</span> (<span class="kw">int</span> j = <span class="nm">0</span>; j &lt; n; j++)
+        <span class="kw">if</span> (a[j] &lt; a[i] || (a[j] == a[i] &amp;&amp; j &lt; i))
+            rango++;
+    b[rango] = a[i];   <span class="cm">// posición destino única</span>
+}</code></pre>
+    <p>Cada iteración del bucle externo es completamente independiente. Ningún hilo necesita coordinarse con otro durante el cómputo.</p>
+
+    <h4>Suma y multiplicación de matrices</h4>
+    <p>La suma elemento a elemento es trivialmente relajada. La multiplicación, con descomposición por filas, también: cada fila del resultado solo necesita una copia de B (que se replica) y unas filas de A.</p>
+
+    <h4>Métodos Monte Carlo</h4>
+    <p>Lanzar millones de muestras aleatorias. Cada muestra es independiente. Solo al final se reducen los resultados.</p>
+
+    <div class="learning-hint">
+      Los problemas que admiten paralelismo relajado se llaman a veces «embarrassingly parallel» (vergonzosamente paralelos). El nombre venía con sorna —«es tan fácil que da vergüenza llamarlo paralelo»— pero hoy se usa sin connotaciones: significa simplemente que el problema se descompone sin esfuerzo.
+    </div>
+  </section>
+
+  <section>
+    <h2>Paralelismo síncrono</h2>
+    <p>Los procesos avanzan <strong>en fases</strong>. Dentro de una fase trabajan en paralelo; entre fases se sincronizan. El patrón se repite hasta terminar.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Paralelismo síncrono por fases">
+        <style>
+          .pr { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .bar { stroke: #2a5f7f; stroke-width: 2.5; stroke-dasharray: 6 3; }
+          .lb { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .lbs { font: 500 9px 'JetBrains Mono', monospace; fill: #3d3d3d; }
+        </style>
+
+        <text class="lb" x="50" y="30">P0</text>
+        <text class="lb" x="50" y="70">P1</text>
+        <text class="lb" x="50" y="110">P2</text>
+        <text class="lb" x="50" y="150">P3</text>
+
+        <!-- Fase 1 -->
+        <rect class="pr" x="90" y="20" width="100" height="20"/>
+        <rect class="pr" x="90" y="60" width="120" height="20"/>
+        <rect class="pr" x="90" y="100" width="80" height="20"/>
+        <rect class="pr" x="90" y="140" width="110" height="20"/>
+        <line class="bar" x1="215" y1="10" x2="215" y2="170"/>
+        <text class="lbs" x="140" y="190" text-anchor="middle" style="font-style: italic;">fase 1: cómputo local</text>
+
+        <!-- Comunicación -->
+        <text class="lbs" x="245" y="90" text-anchor="middle" style="fill: #c5410f;">comm</text>
+        <text class="lbs" x="245" y="100" text-anchor="middle" style="fill: #c5410f;">+ barrera</text>
+
+        <!-- Fase 2 -->
+        <rect class="pr" x="280" y="20" width="100" height="20"/>
+        <rect class="pr" x="280" y="60" width="90" height="20"/>
+        <rect class="pr" x="280" y="100" width="110" height="20"/>
+        <rect class="pr" x="280" y="140" width="95" height="20"/>
+        <line class="bar" x1="400" y1="10" x2="400" y2="170"/>
+        <text class="lbs" x="330" y="190" text-anchor="middle" style="font-style: italic;">fase 2: cómputo local</text>
+
+        <text class="lbs" x="425" y="90" text-anchor="middle" style="fill: #c5410f;">comm</text>
+        <text class="lbs" x="425" y="100" text-anchor="middle" style="fill: #c5410f;">+ barrera</text>
+
+        <!-- Fase 3 -->
+        <rect class="pr" x="460" y="20" width="100" height="20"/>
+        <rect class="pr" x="460" y="60" width="100" height="20"/>
+        <rect class="pr" x="460" y="100" width="100" height="20"/>
+        <rect class="pr" x="460" y="140" width="100" height="20"/>
+        <line class="bar" x1="580" y1="10" x2="580" y2="170"/>
+        <text class="lbs" x="510" y="190" text-anchor="middle" style="font-style: italic;">fase 3...</text>
+
+        <text class="lbs" x="630" y="100" text-anchor="middle">→ tiempo</text>
+      </svg>
+      <p class="caption">Cada fase es paralela, separadas por barreras de sincronización. El proceso más lento marca el ritmo de cada fase.</p>
+    </div>
+
+    <h3>Características</h3>
+    <ul>
+      <li>Sincronización explícita al final de cada fase: típicamente <code>#pragma omp barrier</code> o <code>MPI_Barrier</code>.</li>
+      <li>Patrón de comunicación regular y predecible.</li>
+      <li>Razonamiento de corrección sencillo: dentro de una fase no hay interferencia entre procesos.</li>
+      <li>El proceso más lento marca el ritmo: <strong>desequilibrios</strong> en una fase afectan a toda la ejecución.</li>
+    </ul>
+
+    <h3>Ejemplo: stencil de difusión</h3>
+    <p>Volvemos al ejemplo de la sesión 7 (difusión de calor 1D). Las iteraciones temporales son fases. En cada fase:</p>
+    <ol>
+      <li>Cada proceso intercambia bordes con sus vecinos (<em>ghost cells</em>).</li>
+      <li>Cada proceso calcula el nuevo estado de sus puntos.</li>
+      <li>Barrera global (implícita en la siguiente iteración).</li>
+    </ol>
+
+    <h3>El modelo BSP</h3>
+    <p>Generalización formal del paralelismo síncrono propuesta por Leslie Valiant: <strong>Bulk Synchronous Parallel</strong>. Define el cómputo como una secuencia de superpasos, cada uno con:</p>
+    <ol>
+      <li>Cómputo local en cada proceso.</li>
+      <li>Comunicación con otros procesos.</li>
+      <li>Barrera global.</li>
+    </ol>
+    <p>BSP da un modelo de coste preciso: <code>t<sub>superpaso</sub> = w + h·g + ℓ</code>, donde <code>w</code> es el trabajo local máximo, <code>h</code> los datos comunicados, <code>g</code> el coste por palabra y <code>ℓ</code> el de la barrera.</p>
+  </section>
+
+  <section>
+    <h2>Ejemplo: suma prefija (scan)</h2>
+    <p>Dado un array <code>a</code>, calcular <code>b[i] = a[0] + a[1] + ... + a[i]</code> para todo i. Es la operación de <strong>prefix sum</strong> o <strong>scan</strong>: aparece en histogramas paralelos, ordenaciones, compresión de datos.</p>
+
+    <p>Secuencialmente es trivial (un bucle). En paralelo hace falta un algoritmo síncrono en fases logarítmicas:</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Suma prefija paralela en fases">
+        <style>
+          .cell { fill: #fff; stroke: #1a1a1a; stroke-width: 1; }
+          .cell2 { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1; }
+          .lb { font: 600 10px 'JetBrains Mono', monospace; fill: #1a1a1a; text-anchor: middle; }
+          .lh { font: 700 11px 'Fraunces', serif; fill: #1a1a1a; }
+          .arr { stroke: #c5410f; stroke-width: 1; fill: none; marker-end: url(#aSP); }
+        </style>
+        <defs>
+          <marker id="aSP" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+            <path d="M0,0 L5,2.5 L0,5 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <text class="lh" x="20" y="25">Inicial: a = [3, 1, 7, 0, 4, 1, 6, 3]</text>
+        <g>
+          <rect class="cell" x="60" y="35" width="60" height="25"/><text class="lb" x="90" y="52">3</text>
+          <rect class="cell" x="120" y="35" width="60" height="25"/><text class="lb" x="150" y="52">1</text>
+          <rect class="cell" x="180" y="35" width="60" height="25"/><text class="lb" x="210" y="52">7</text>
+          <rect class="cell" x="240" y="35" width="60" height="25"/><text class="lb" x="270" y="52">0</text>
+          <rect class="cell" x="300" y="35" width="60" height="25"/><text class="lb" x="330" y="52">4</text>
+          <rect class="cell" x="360" y="35" width="60" height="25"/><text class="lb" x="390" y="52">1</text>
+          <rect class="cell" x="420" y="35" width="60" height="25"/><text class="lb" x="450" y="52">6</text>
+          <rect class="cell" x="480" y="35" width="60" height="25"/><text class="lb" x="510" y="52">3</text>
+        </g>
+
+        <text class="lh" x="20" y="90">Paso 1: sumar con vecino a distancia 1</text>
+        <g>
+          <rect class="cell" x="60" y="100" width="60" height="25"/><text class="lb" x="90" y="117">3</text>
+          <rect class="cell2" x="120" y="100" width="60" height="25"/><text class="lb" x="150" y="117">4</text>
+          <rect class="cell2" x="180" y="100" width="60" height="25"/><text class="lb" x="210" y="117">8</text>
+          <rect class="cell2" x="240" y="100" width="60" height="25"/><text class="lb" x="270" y="117">7</text>
+          <rect class="cell2" x="300" y="100" width="60" height="25"/><text class="lb" x="330" y="117">4</text>
+          <rect class="cell2" x="360" y="100" width="60" height="25"/><text class="lb" x="390" y="117">5</text>
+          <rect class="cell2" x="420" y="100" width="60" height="25"/><text class="lb" x="450" y="117">7</text>
+          <rect class="cell2" x="480" y="100" width="60" height="25"/><text class="lb" x="510" y="117">9</text>
+        </g>
+
+        <text class="lh" x="20" y="155">Paso 2: sumar con vecino a distancia 2</text>
+        <g>
+          <rect class="cell" x="60" y="165" width="60" height="25"/><text class="lb" x="90" y="182">3</text>
+          <rect class="cell" x="120" y="165" width="60" height="25"/><text class="lb" x="150" y="182">4</text>
+          <rect class="cell2" x="180" y="165" width="60" height="25"/><text class="lb" x="210" y="182">11</text>
+          <rect class="cell2" x="240" y="165" width="60" height="25"/><text class="lb" x="270" y="182">11</text>
+          <rect class="cell2" x="300" y="165" width="60" height="25"/><text class="lb" x="330" y="182">12</text>
+          <rect class="cell2" x="360" y="165" width="60" height="25"/><text class="lb" x="390" y="182">12</text>
+          <rect class="cell2" x="420" y="165" width="60" height="25"/><text class="lb" x="450" y="182">11</text>
+          <rect class="cell2" x="480" y="165" width="60" height="25"/><text class="lb" x="510" y="182">14</text>
+        </g>
+
+        <text class="lh" x="20" y="220">Paso 3: sumar con vecino a distancia 4</text>
+        <g>
+          <rect class="cell" x="60" y="230" width="60" height="25"/><text class="lb" x="90" y="247">3</text>
+          <rect class="cell" x="120" y="230" width="60" height="25"/><text class="lb" x="150" y="247">4</text>
+          <rect class="cell" x="180" y="230" width="60" height="25"/><text class="lb" x="210" y="247">11</text>
+          <rect class="cell" x="240" y="230" width="60" height="25"/><text class="lb" x="270" y="247">11</text>
+          <rect class="cell2" x="300" y="230" width="60" height="25"/><text class="lb" x="330" y="247">15</text>
+          <rect class="cell2" x="360" y="230" width="60" height="25"/><text class="lb" x="390" y="247">16</text>
+          <rect class="cell2" x="420" y="230" width="60" height="25"/><text class="lb" x="450" y="247">22</text>
+          <rect class="cell2" x="480" y="230" width="60" height="25"/><text class="lb" x="510" y="247">25</text>
+        </g>
+        <text class="lh" x="560" y="247" style="fill: #c5410f;">resultado final</text>
+      </svg>
+      <p class="caption">Suma prefija paralela en log n fases. Cada paso duplica el alcance: en el paso k, cada elemento incorpora la información de hasta <code>2<sup>k</sup></code> elementos a su izquierda.</p>
+    </div>
+
+    <p>El número de pasos es <code>log n</code> en vez de <code>n</code>: con n procesos, speed-up de <code>n / log n</code>. Pero entre fase y fase hay barrera (memoria compartida) o intercambio de mensajes (distribuida).</p>
+  </section>
+
+  <section>
+    <h2>Cuándo elegir cada esquema</h2>
+
+    <table>
+      <tr><th>Si tu problema...</th><th>Esquema apropiado</th></tr>
+      <tr>
+        <td>Se descompone en N subproblemas independientes</td>
+        <td>Relajado (Monte Carlo, ordenación por rango)</td>
+      </tr>
+      <tr>
+        <td>Avanza por iteraciones, cada una depende del estado anterior global</td>
+        <td>Síncrono (stencil, métodos iterativos)</td>
+      </tr>
+      <tr>
+        <td>Tiene dependencias entre subtareas con patrón regular</td>
+        <td>Pipeline (<a href="sesion_10.html">sesión 10</a>)</td>
+      </tr>
+      <tr>
+        <td>Tiene grafo de dependencias arbitrario</td>
+        <td>Paralelismo en árbol/grafo (<a href="sesion_10.html">sesión 10</a>)</td>
+      </tr>
+      <tr>
+        <td>Es recursivo y descomponible</td>
+        <td>Divide y vencerás (<a href="sesion_11.html">sesión 11</a>)</td>
+      </tr>
+      <tr>
+        <td>Tiene cargas impredecibles</td>
+        <td>Maestro-esclavo, bolsa de tareas (<a href="sesion_12.html">sesión 12</a>)</td>
+      </tr>
+    </table>
+
+    <div class="learning-hint">
+      Reconocer rápidamente el esquema apropiado es una habilidad práctica clave en el examen. Cuando leas un enunciado, pregúntate: ¿hay dependencias entre subtareas? ¿de qué tipo? Eso fija el esquema en pocos segundos.
+    </div>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">Esta sesión enseña a clasificar problemas. Las preguntas mezclan ejemplos de sesiones anteriores: prácticamente todo lo visto encaja en uno de los dos esquemas.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">¿Qué es el paralelismo relajado en una frase?</div>
+        <div class="answer">Esquema donde los procesos trabajan con poca o ninguna interacción entre sí. Cada uno hace su parte casi independientemente; las comunicaciones se limitan al reparto inicial y la recolección final.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es el paralelismo síncrono?</div>
+        <div class="answer">Esquema donde los procesos avanzan por fases. Dentro de cada fase trabajan en paralelo; entre fases hay sincronización (barrera o intercambio de mensajes). Patrón típico de los métodos iterativos.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué la multiplicación de matrices se considera de paralelismo relajado?</div>
+        <div class="answer">Con descomposición por filas, cada fila del resultado se calcula independientemente. No hay coordinación entre los hilos/procesos durante el cómputo. Solo al final se recoge el resultado.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">En el paralelismo síncrono, ¿quién marca el ritmo de cada fase?</div>
+        <div class="answer">El proceso más lento. La barrera al final de la fase espera a todos. Si uno tiene mucho más trabajo o sufre una pausa, el resto está ocioso. Por eso el equilibrio de carga es crítico en este esquema.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es el modelo BSP?</div>
+        <div class="answer">Bulk Synchronous Parallel: formalización del paralelismo síncrono propuesta por Valiant. Define la ejecución como secuencia de superpasos (cómputo local + comunicación + barrera). Da un modelo de coste preciso útil para análisis teórico.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Cuántos pasos necesita la suma prefija paralela con n procesos? ¿Y qué speed-up da?</div>
+        <div class="answer">log n pasos en lugar de los n del algoritmo secuencial. Speed-up de n/log n. Con n grande, casi lineal.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Repaso de la sesión 8: ¿la suma de n datos con reducción en árbol es síncrona o relajada?</div>
+        <div class="answer">Síncrona. Las fases de la reducción (log p pasos) están separadas por sincronización: cada nivel del árbol espera al anterior. La suma local de cada proceso, en cambio, es relajada.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué el método de Monte Carlo es un ejemplo perfecto de paralelismo relajado?</div>
+        <div class="answer">Cada muestra es completamente independiente del resto. Si tienes p procesos, cada uno genera n/p muestras sin coordinarse con los demás. Solo al final se reducen los acumuladores parciales.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">En el stencil de difusión, ¿qué hay entre fases que lo convierte en síncrono?</div>
+        <div class="answer">El intercambio de ghost cells (los bordes con los vecinos) y la barrera implícita. Hasta que cada proceso no tiene los valores actualizados de sus vecinos, no puede calcular la siguiente iteración.</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_08.html">
+      <div class="nav-label">← Sesión 08</div>
+      <div class="nav-title">Paralelismo de datos</div>
+    </a>
+    <a class="nav-link next" href="sesion_10.html">
+      <div class="nav-label">Sesión 10 →</div>
+      <div class="nav-title">Grafo y pipeline</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

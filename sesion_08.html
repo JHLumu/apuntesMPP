@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 08 · Paralelismo de datos — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 08 · BLOQUE IV</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Paralelismo<br>de datos</h1>
+    <p class="session-subtitle">El esquema más sencillo y, en muchos casos, el más eficiente: aplicar la misma operación a muchos datos a la vez. Es el caballo de batalla del cómputo numérico.</p>
+  </header>
+
+  <section>
+    <h2>Idea central</h2>
+    <p>«Muchos datos tratados de una forma <em>igual</em> o <em>similar</em>». No hay tareas distintas que coordinar: todos los procesos hacen el mismo trabajo sobre porciones distintas del problema.</p>
+
+    <p>Es el modelo natural de:</p>
+    <ul>
+      <li>Algoritmos numéricos sobre arrays y matrices.</li>
+      <li>Procesado de imagen píxel a píxel.</li>
+      <li>Simulaciones de partículas independientes.</li>
+      <li>Cualquier «mapa» de una función sobre una colección.</li>
+    </ul>
+
+    <p>También es el modelo que mejor se adapta a las GPU y a las unidades vectoriales SIMD.</p>
+  </section>
+
+  <section>
+    <h2>Dos variantes según el modelo de memoria</h2>
+
+    <div class="comparison">
+      <div class="col">
+        <h4>Memoria compartida — paralelismo de datos</h4>
+        <p>Los hilos comparten el array. Solo hay que decidir qué porción procesa cada uno. Paralelización a menudo <strong>implícita</strong>: el compilador o el runtime reparten las iteraciones (<code>#pragma omp parallel for</code>).</p>
+      </div>
+      <div class="col alt">
+        <h4>Memoria distribuida — particionado de datos</h4>
+        <p>Cada proceso tiene su trozo en memoria propia. La distribución del array es <strong>explícita</strong>: el programador decide qué dato vive en qué proceso, y comunica los datos compartidos cuando hace falta.</p>
+      </div>
+    </div>
+
+    <div class="learning-hint">
+      La distinción «paralelismo de datos» vs «particionado de datos» es propia del curso, refleja el mismo principio en dos modelos de memoria. Otros textos usan «paralelismo de datos» de forma más general.
+    </div>
+  </section>
+
+  <section>
+    <h2>Ejemplo canónico: suma de n datos</h2>
+    <p>Calcular la suma de un array. Algo trivial en secuencial, base de muchos algoritmos paralelos.</p>
+
+    <h3>Versión implícita (memoria compartida)</h3>
+
+<pre><code><span class="kw">double</span> suma = <span class="nm">0.0</span>;
+<span class="pr">#pragma omp parallel for</span> reduction(+: suma)
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++)
+    suma += a[i];</code></pre>
+
+    <p>OpenMP reparte el bucle entre hilos, cada uno acumula en su copia privada de <code>suma</code>, y al final combina con <code>+</code>. El programador no especifica cómo se reparte ni cómo se combina: lo decide el runtime.</p>
+
+    <h3>Versión explícita (paso de mensajes)</h3>
+
+<pre><code><span class="cm">// Cada proceso tiene su trozo a_local de tamaño n/p</span>
+<span class="kw">double</span> suma_local = <span class="nm">0.0</span>;
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n_local; i++)
+    suma_local += a_local[i];
+
+<span class="kw">double</span> suma_total;
+<span class="fn">MPI_Reduce</span>(&amp;suma_local, &amp;suma_total, <span class="nm">1</span>, MPI_DOUBLE,
+           MPI_SUM, <span class="nm">0</span>, MPI_COMM_WORLD);</code></pre>
+
+    <p>El reparto es responsabilidad del programador (con <code>MPI_Scatter</code> o asignación inicial). La reducción se hace explícitamente con <code>MPI_Reduce</code>.</p>
+
+    <h3>Análisis del tiempo</h3>
+    <p>Para cada uno de los <code>p</code> procesos: <strong>cómputo</strong> = <code>(n/p) · t<sub>c</sub></code>. La reducción en árbol cuesta <strong>log p · (t<sub>s</sub> + t<sub>w</sub>)</strong>. Total:</p>
+
+    <div class="key-concept">
+      <span class="label">MODELO DEL TIEMPO</span>
+      <h3>t(n, p) ≈ (n/p)·t<sub>c</sub> + log p · (t<sub>s</sub> + t<sub>w</sub>)</h3>
+      <p>El primer término es decreciente en p (buen escalado del cómputo). El segundo crece como log p. Mientras el cómputo domine, el speed-up es casi ideal. Para n pequeño, la reducción manda y paralelizar puede no compensar.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Producto escalar y producto matriz-vector</h2>
+
+    <h3>Producto escalar</h3>
+    <p>Estructura prácticamente idéntica a la suma:</p>
+
+<pre><code><span class="cm">// dot(a, b) = a[0]*b[0] + a[1]*b[1] + ... + a[n-1]*b[n-1]</span>
+<span class="kw">double</span> dot = <span class="nm">0.0</span>;
+<span class="pr">#pragma omp parallel for</span> reduction(+: dot)
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++)
+    dot += a[i] * b[i];</code></pre>
+
+    <h3>Producto matriz-vector</h3>
+    <p>Dos bucles. Se paraleliza el externo, sobre las filas:</p>
+
+<pre><code><span class="cm">// r = A · x (A es n×n, x es n×1)</span>
+<span class="pr">#pragma omp parallel for</span>
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++) {
+    <span class="kw">double</span> s = <span class="nm">0</span>;
+    <span class="kw">for</span> (<span class="kw">int</span> j = <span class="nm">0</span>; j &lt; n; j++)
+        s += A[i][j] * x[j];
+    r[i] = s;
+}</code></pre>
+
+    <p>Cada iteración del bucle externo es independiente, así que no hace falta ni <code>reduction</code> ni <code>critical</code>. Cada hilo escribe en una posición distinta de <code>r</code>.</p>
+  </section>
+
+  <section>
+    <h2>Multiplicación de matrices</h2>
+    <p>El problema modelo del bloque. Aparece en todos los ejemplos del curso.</p>
+
+    <h3>Versión implícita básica</h3>
+
+<pre><code><span class="pr">#pragma omp parallel for</span> private(i, j, k)
+<span class="kw">for</span> (i = <span class="nm">0</span>; i &lt; n; i++)
+    <span class="kw">for</span> (j = <span class="nm">0</span>; j &lt; n; j++) {
+        c[i][j] = <span class="nm">0</span>;
+        <span class="kw">for</span> (k = <span class="nm">0</span>; k &lt; n; k++)
+            c[i][j] += a[i][k] * b[k][j];
+    }</code></pre>
+
+    <p>El número de operaciones en coma flotante es <code>2n³</code>. Pero el tiempo se puede mejorar mucho sin cambiar el orden algorítmico, jugando con el acceso a memoria:</p>
+
+    <ul>
+      <li>Usar una variable escalar <code>s</code> para acumular y escribir <code>c[i][j]</code> una sola vez al final, evitando recargas.</li>
+      <li>Reordenar bucles para mejorar localidad (versión <em>ikj</em> en lugar de <em>ijk</em>).</li>
+      <li>Multiplicar por bloques (tiling): aprovecha la caché.</li>
+      <li>Vectorizar con AVX o usar BLAS (<code>dgemm</code>).</li>
+    </ul>
+
+    <h3>Versión por bloques</h3>
+    <p>Particiona A, B, C en bloques de tamaño <code>m × m</code>. Cada elemento del resultado por bloques es:</p>
+
+    <div class="key-concept">
+      <span class="label">DESCOMPOSICIÓN POR BLOQUES</span>
+      <h3>C<sub>ij</sub> = Σ<sub>k</sub> A<sub>ik</sub> · B<sub>kj</sub></h3>
+      <p>Mismo patrón que la multiplicación elemental pero con bloques. Ventajas: (1) cada bloque cabe en caché y se reusa intensamente, (2) las multiplicaciones de bloques son tareas grandes, fáciles de mapear a procesos.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Distribución de datos en memoria distribuida</h2>
+    <p>Cuando los datos no caben en una sola máquina o queremos paralelizar entre nodos, hay que <strong>distribuir</strong> los arrays entre procesos. Hay varias formas estándar.</p>
+
+    <h3>Para vectores y matrices unidimensionales</h3>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Distribuciones unidimensionales">
+        <style>
+          .cell { stroke: #1a1a1a; stroke-width: 1; }
+          .p0 { fill: #fdf6e3; }
+          .p1 { fill: #c5d5e0; }
+          .p2 { fill: #d8e5cf; }
+          .p3 { fill: #e8d0d8; }
+          .lb { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .ls { font: 500 9px 'JetBrains Mono', monospace; fill: #3d3d3d; text-anchor: middle; }
+          .h { font: 700 12px 'Fraunces', serif; fill: #1a1a1a; }
+        </style>
+
+        <!-- Bloque -->
+        <text x="20" y="20" class="h">Bloque (block)</text>
+        <g>
+          <rect class="cell p0" x="20" y="35" width="25" height="25"/><text class="ls" x="32" y="52">0</text>
+          <rect class="cell p0" x="45" y="35" width="25" height="25"/><text class="ls" x="57" y="52">1</text>
+          <rect class="cell p0" x="70" y="35" width="25" height="25"/><text class="ls" x="82" y="52">2</text>
+          <rect class="cell p0" x="95" y="35" width="25" height="25"/><text class="ls" x="107" y="52">3</text>
+          <rect class="cell p1" x="120" y="35" width="25" height="25"/><text class="ls" x="132" y="52">4</text>
+          <rect class="cell p1" x="145" y="35" width="25" height="25"/><text class="ls" x="157" y="52">5</text>
+          <rect class="cell p1" x="170" y="35" width="25" height="25"/><text class="ls" x="182" y="52">6</text>
+          <rect class="cell p1" x="195" y="35" width="25" height="25"/><text class="ls" x="207" y="52">7</text>
+          <rect class="cell p2" x="220" y="35" width="25" height="25"/><text class="ls" x="232" y="52">8</text>
+          <rect class="cell p2" x="245" y="35" width="25" height="25"/><text class="ls" x="257" y="52">9</text>
+          <rect class="cell p2" x="270" y="35" width="25" height="25"/><text class="ls" x="282" y="52">10</text>
+          <rect class="cell p2" x="295" y="35" width="25" height="25"/><text class="ls" x="307" y="52">11</text>
+          <rect class="cell p3" x="320" y="35" width="25" height="25"/><text class="ls" x="332" y="52">12</text>
+          <rect class="cell p3" x="345" y="35" width="25" height="25"/><text class="ls" x="357" y="52">13</text>
+          <rect class="cell p3" x="370" y="35" width="25" height="25"/><text class="ls" x="382" y="52">14</text>
+          <rect class="cell p3" x="395" y="35" width="25" height="25"/><text class="ls" x="407" y="52">15</text>
+        </g>
+        <text class="lb" x="82" y="80">P0</text>
+        <text class="lb" x="182" y="80">P1</text>
+        <text class="lb" x="282" y="80">P2</text>
+        <text class="lb" x="382" y="80">P3</text>
+        <text x="500" y="55" class="ls" style="text-anchor: start; font-style: italic;">Cada proceso un bloque contiguo. Bueno para acceso secuencial y vecinos.</text>
+
+        <!-- Cíclico -->
+        <text x="20" y="110" class="h">Cíclico (cyclic)</text>
+        <g>
+          <rect class="cell p0" x="20" y="125" width="25" height="25"/><text class="ls" x="32" y="142">0</text>
+          <rect class="cell p1" x="45" y="125" width="25" height="25"/><text class="ls" x="57" y="142">1</text>
+          <rect class="cell p2" x="70" y="125" width="25" height="25"/><text class="ls" x="82" y="142">2</text>
+          <rect class="cell p3" x="95" y="125" width="25" height="25"/><text class="ls" x="107" y="142">3</text>
+          <rect class="cell p0" x="120" y="125" width="25" height="25"/><text class="ls" x="132" y="142">4</text>
+          <rect class="cell p1" x="145" y="125" width="25" height="25"/><text class="ls" x="157" y="142">5</text>
+          <rect class="cell p2" x="170" y="125" width="25" height="25"/><text class="ls" x="182" y="142">6</text>
+          <rect class="cell p3" x="195" y="125" width="25" height="25"/><text class="ls" x="207" y="142">7</text>
+          <rect class="cell p0" x="220" y="125" width="25" height="25"/><text class="ls" x="232" y="142">8</text>
+          <rect class="cell p1" x="245" y="125" width="25" height="25"/><text class="ls" x="257" y="142">9</text>
+          <rect class="cell p2" x="270" y="125" width="25" height="25"/><text class="ls" x="282" y="142">10</text>
+          <rect class="cell p3" x="295" y="125" width="25" height="25"/><text class="ls" x="307" y="142">11</text>
+          <rect class="cell p0" x="320" y="125" width="25" height="25"/><text class="ls" x="332" y="142">12</text>
+          <rect class="cell p1" x="345" y="125" width="25" height="25"/><text class="ls" x="357" y="142">13</text>
+          <rect class="cell p2" x="370" y="125" width="25" height="25"/><text class="ls" x="382" y="142">14</text>
+          <rect class="cell p3" x="395" y="125" width="25" height="25"/><text class="ls" x="407" y="142">15</text>
+        </g>
+        <text x="500" y="145" class="ls" style="text-anchor: start; font-style: italic;">Reparto entrelazado. Bueno para balanceo cuando los costes varían con i.</text>
+      </svg>
+      <p class="caption">Distribución por bloques vs cíclica. Existen también híbridas («bloque-cíclica») que combinan ambas ventajas.</p>
+    </div>
+
+    <h3>Para matrices bidimensionales</h3>
+    <p>Las opciones son más ricas:</p>
+    <ul>
+      <li><strong>Por filas</strong>: cada proceso tiene un bloque de filas consecutivas. Cómodo para productos matriz-vector con vector replicado.</li>
+      <li><strong>Por columnas</strong>: análogo.</li>
+      <li><strong>Por bloques 2D</strong>: malla de procesos P = P<sub>r</sub> × P<sub>c</sub>; cada proceso tiene un subbloque rectangular. Mejor para multiplicación de matrices.</li>
+    </ul>
+
+    <h3>Fórmulas para distribución por bloques 2D</h3>
+    <p>Si tenemos matriz <code>A</code> de <code>m × n</code> y malla de procesos <code>P</code> = <code>p<sub>r</sub> × p<sub>c</sub></code>:</p>
+
+    <ul>
+      <li>Tamaño de bloque por fila: <code>b<sub>r</sub> = ⌈m / p<sub>r</sub>⌉</code>.</li>
+      <li>Tamaño de bloque por columna: <code>b<sub>c</sub> = ⌈n / p<sub>c</sub>⌉</code>.</li>
+      <li>El elemento global <code>a<sub>i,j</sub></code> va al proceso <strong>(i div b<sub>r</sub>, j div b<sub>c</sub>)</strong>.</li>
+      <li>Sus índices locales son <strong>(i mod b<sub>r</sub>, j mod b<sub>c</sub>)</strong>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Ejercicio guiado: aplicar las fórmulas</h2>
+    <p>Matriz <code>A</code> de <code>14 × 11</code>, malla de procesos <code>P</code> = <code>3 × 2</code>. Calcular destino e índices locales para tres elementos.</p>
+
+    <p>Tamaño de bloque por fila: <code>b<sub>r</sub> = ⌈14 / 3⌉ = 5</code>.<br>
+    Tamaño de bloque por columna: <code>b<sub>c</sub> = ⌈11 / 2⌉ = 6</code>.</p>
+
+    <table>
+      <tr><th>Elemento global</th><th>Proceso destino (fila, col)</th><th>Índices locales</th></tr>
+      <tr>
+        <td><code>a<sub>2,4</sub></code></td>
+        <td>(2 div 5, 4 div 6) = <strong>(0, 0)</strong></td>
+        <td>(2 mod 5, 4 mod 6) = <strong>(2, 4)</strong></td>
+      </tr>
+      <tr>
+        <td><code>a<sub>8,7</sub></code></td>
+        <td>(8 div 5, 7 div 6) = <strong>(1, 1)</strong></td>
+        <td>(8 mod 5, 7 mod 6) = <strong>(3, 1)</strong></td>
+      </tr>
+      <tr>
+        <td><code>a<sub>12,2</sub></code></td>
+        <td>(12 div 5, 2 div 6) = <strong>(2, 0)</strong></td>
+        <td>(12 mod 5, 2 mod 6) = <strong>(2, 2)</strong></td>
+      </tr>
+    </table>
+
+    <div class="learning-hint">
+      Estos cálculos son ejercicios típicos de examen. Practica con tu propio ejemplo: dibuja la malla, marca los bordes de los bloques, y comprueba que las fórmulas dan lo que ves.
+    </div>
+  </section>
+
+  <section>
+    <h2>Cuándo el paralelismo de datos no encaja</h2>
+    <p>No todos los problemas son adecuados. Síntomas de incompatibilidad:</p>
+
+    <ul>
+      <li><strong>Iteraciones con coste muy desigual</strong>: el reparto estático produce desequilibrio. Necesitas balanceo dinámico (<a href="sesion_12.html">sesión 12</a>).</li>
+      <li><strong>Dependencias entre iteraciones</strong>: si <code>a[i]</code> depende de <code>a[i-1]</code>, no se puede paralelizar directamente. Hay que reformular (<a href="sesion_10.html">pipeline</a> o algoritmos relajados).</li>
+      <li><strong>Naturaleza estructural irregular</strong>: árboles, grafos arbitrarios. Mejor con esquemas de tareas o trabajadores replicados.</li>
+    </ul>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">Esta sesión sienta el modelo base que las siguientes contrastarán. Comprueba que distingues el paralelismo de datos de los otros esquemas que vendrán.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">Define paralelismo de datos en una sola frase.</div>
+        <div class="answer">Muchos datos tratados de la misma forma —o muy similar— por procesos que ejecutan el mismo código sobre porciones distintas del problema.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿En qué se diferencia «paralelismo de datos» (memoria compartida) de «particionado de datos» (memoria distribuida)?</div>
+        <div class="answer">En memoria compartida los hilos comparten el array y el reparto suele ser implícito (lo hace OpenMP). En memoria distribuida cada proceso tiene su trozo en memoria propia y el reparto es explícito (el programador hace <code>MPI_Scatter</code> o equivalente).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué para una matriz <code>m × n</code> en malla <code>p<sub>r</sub> × p<sub>c</sub></code> el tamaño de bloque por fila es <code>⌈m/p<sub>r</sub>⌉</code>?</div>
+        <div class="answer">Para garantizar que todos los procesos de una fila de la malla reciben filas de la matriz y que ninguno se queda con más de un bloque. El último proceso puede quedarse con menos si m no es múltiplo de p<sub>r</sub>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué ventaja aporta la multiplicación de matrices por bloques sobre la versión clásica?</div>
+        <div class="answer">Mejor uso de caché: cada bloque cabe en caché L2/L3 y se reutiliza muchas veces antes de salir. Además, los bloques se mapean naturalmente a procesos en memoria distribuida. La complejidad asintótica es la misma (O(n³)) pero el tiempo real puede ser un orden de magnitud menor.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Diferencia entre distribución por bloques y cíclica.</div>
+        <div class="answer">Bloques: cada proceso recibe un trozo contiguo del array. Bueno para acceso secuencial y patrones de vecinos. Cíclica: los elementos se reparten alternados entre procesos. Bueno para balancear costes que dependen del índice (típico en algoritmos triangulares).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Para una suma de n datos con p procesos, el tiempo aproximado es (n/p)·t<sub>c</sub> + log p·(t<sub>s</sub>+t<sub>w</sub>). ¿Cuándo NO merece la pena paralelizar?</div>
+        <div class="answer">Cuando n es tan pequeño que (n/p)·t<sub>c</sub> &lt; log p·(t<sub>s</sub>+t<sub>w</sub>): el coste de comunicar/coordinar supera al cómputo ahorrado. Hay un n umbral por debajo del cual el secuencial gana.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Sería útil paralelizar la suma total final de los productos parciales en un producto escalar distribuido?</div>
+        <div class="answer">No: solo son p valores. La suma cuesta p − 1 sumas, mientras que paralelizarla añade comunicaciones que cuestan log p · (t<sub>s</sub>+t<sub>w</sub>). Para los típicos valores de p, p − 1 sumas son baratísimas. Se hace secuencialmente en el root (o se usa <code>MPI_Reduce</code>, que ya optimiza internamente).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Repaso de la sesión 7: ¿qué fase de PCAM toma la decisión «cada proceso recibe n/p filas»?</div>
+        <div class="answer">Aglomeración. El particionado original genera una tarea por elemento (o por fila); la aglomeración las agrupa en bloques del tamaño que conviene al hardware.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué el paralelismo de datos es el modelo natural de las GPU?</div>
+        <div class="answer">Porque las GPU son SIMD masivo: miles de hilos ejecutan la misma instrucción sobre datos distintos. Cuando tu problema encaja en ese molde —mapear una función sobre un array—, la GPU brilla. Para problemas irregulares, no.</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_07.html">
+      <div class="nav-label">← Sesión 07</div>
+      <div class="nav-title">Metodología de Foster</div>
+    </a>
+    <a class="nav-link next" href="sesion_09.html">
+      <div class="nav-label">Sesión 09 →</div>
+      <div class="nav-title">Relajado y síncrono</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

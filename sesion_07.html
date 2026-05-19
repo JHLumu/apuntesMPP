@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 07 · Metodología de Foster — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 07 · BLOQUE III</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Metodología<br>de Foster</h1>
+    <p class="session-subtitle">Cuatro pasos para diseñar un algoritmo paralelo. Sin una metodología, paralelizar se reduce a poner <code>#pragma omp</code> donde se pueda. Con ella, las decisiones tienen justificación.</p>
+  </header>
+
+  <section>
+    <h2>El problema: la programación paralela no tiene recetas</h2>
+    <p>Si la programación secuencial admite patrones bastante estandarizados, la paralela exige <strong>creatividad</strong> y <strong>aproximación metodológica</strong>. Ian Foster propuso en <em>Designing and Building Parallel Programs</em> una metodología que pasa por cuatro fases: <strong>P</strong>articionado, <strong>C</strong>omunicación, <strong>A</strong>glomeración, <strong>M</strong>apeo. PCAM.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Metodología PCAM de Foster">
+        <style>
+          .b { fill: #fff; stroke: #1a1a1a; stroke-width: 1.5; }
+          .bw { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .l { font: 700 13px 'Fraunces', serif; fill: #1a1a1a; text-anchor: middle; }
+          .ls { font: 500 10px 'Inter Tight', sans-serif; fill: #3d3d3d; text-anchor: middle; }
+          .lc { font: 600 10px 'JetBrains Mono', monospace; fill: #c5410f; text-anchor: middle; letter-spacing: 0.1em; }
+          .arr { stroke: #1a1a1a; stroke-width: 1.5; fill: none; marker-end: url(#aPC); }
+          .t { fill: #1a1a1a; }
+        </style>
+        <defs>
+          <marker id="aPC" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 z" fill="#1a1a1a"/>
+          </marker>
+        </defs>
+
+        <!-- Problema -->
+        <ellipse class="b" cx="80" cy="120" rx="60" ry="40"/>
+        <text class="l" x="80" y="115">Problema</text>
+        <text class="ls" x="80" y="135">+ datos</text>
+
+        <path class="arr" d="M 145 120 L 195 120"/>
+        <text class="lc" x="170" y="110">PARTITION</text>
+
+        <!-- Particionado -->
+        <g>
+          <circle class="bw" cx="220" cy="95" r="6"/><circle class="bw" cx="240" cy="95" r="6"/><circle class="bw" cx="260" cy="95" r="6"/>
+          <circle class="bw" cx="220" cy="115" r="6"/><circle class="bw" cx="240" cy="115" r="6"/><circle class="bw" cx="260" cy="115" r="6"/>
+          <circle class="bw" cx="220" cy="135" r="6"/><circle class="bw" cx="240" cy="135" r="6"/><circle class="bw" cx="260" cy="135" r="6"/>
+          <circle class="bw" cx="220" cy="155" r="6"/><circle class="bw" cx="240" cy="155" r="6"/><circle class="bw" cx="260" cy="155" r="6"/>
+        </g>
+
+        <path class="arr" d="M 280 120 L 330 120"/>
+        <text class="lc" x="305" y="110">COMM</text>
+
+        <!-- Comunicación -->
+        <g>
+          <circle class="bw" cx="350" cy="95" r="6"/><circle class="bw" cx="370" cy="95" r="6"/><circle class="bw" cx="390" cy="95" r="6"/>
+          <circle class="bw" cx="350" cy="115" r="6"/><circle class="bw" cx="370" cy="115" r="6"/><circle class="bw" cx="390" cy="115" r="6"/>
+          <circle class="bw" cx="350" cy="135" r="6"/><circle class="bw" cx="370" cy="135" r="6"/><circle class="bw" cx="390" cy="135" r="6"/>
+          <circle class="bw" cx="350" cy="155" r="6"/><circle class="bw" cx="370" cy="155" r="6"/><circle class="bw" cx="390" cy="155" r="6"/>
+          <line x1="350" y1="95" x2="370" y2="95" stroke="#c5410f"/>
+          <line x1="370" y1="95" x2="390" y2="95" stroke="#c5410f"/>
+          <line x1="350" y1="95" x2="350" y2="115" stroke="#c5410f"/>
+          <line x1="370" y1="115" x2="390" y2="115" stroke="#c5410f"/>
+          <line x1="370" y1="115" x2="390" y2="135" stroke="#c5410f"/>
+          <line x1="350" y1="135" x2="370" y2="135" stroke="#c5410f"/>
+          <line x1="350" y1="155" x2="370" y2="155" stroke="#c5410f"/>
+        </g>
+
+        <path class="arr" d="M 410 120 L 460 120"/>
+        <text class="lc" x="435" y="110">AGGLOM</text>
+
+        <!-- Aglomeración -->
+        <g>
+          <ellipse class="b" cx="490" cy="105" rx="22" ry="14"/>
+          <ellipse class="b" cx="525" cy="105" rx="22" ry="14"/>
+          <ellipse class="b" cx="490" cy="140" rx="22" ry="14"/>
+          <ellipse class="b" cx="525" cy="140" rx="22" ry="14"/>
+          <circle class="bw" cx="484" cy="101" r="3"/><circle class="bw" cx="495" cy="101" r="3"/>
+          <circle class="bw" cx="484" cy="110" r="3"/><circle class="bw" cx="495" cy="110" r="3"/>
+          <circle class="bw" cx="519" cy="101" r="3"/><circle class="bw" cx="530" cy="101" r="3"/>
+          <circle class="bw" cx="519" cy="110" r="3"/><circle class="bw" cx="530" cy="110" r="3"/>
+          <circle class="bw" cx="484" cy="136" r="3"/><circle class="bw" cx="495" cy="136" r="3"/>
+          <circle class="bw" cx="484" cy="145" r="3"/><circle class="bw" cx="495" cy="145" r="3"/>
+          <circle class="bw" cx="519" cy="136" r="3"/><circle class="bw" cx="530" cy="136" r="3"/>
+          <circle class="bw" cx="519" cy="145" r="3"/><circle class="bw" cx="530" cy="145" r="3"/>
+        </g>
+
+        <path class="arr" d="M 560 120 L 610 120"/>
+        <text class="lc" x="585" y="110">MAP</text>
+
+        <!-- Mapeo -->
+        <g>
+          <rect class="b" x="625" y="80" width="35" height="30"/>
+          <text class="ls" x="643" y="98">P1</text>
+          <rect class="b" x="670" y="80" width="35" height="30"/>
+          <text class="ls" x="688" y="98">P2</text>
+          <rect class="b" x="625" y="125" width="35" height="30"/>
+          <text class="ls" x="643" y="143">P3</text>
+          <rect class="b" x="670" y="125" width="35" height="30"/>
+          <text class="ls" x="688" y="143">P4</text>
+        </g>
+
+        <text x="360" y="220" class="ls" style="font-style: italic; font-size: 11px;">De problema abstracto a tareas asignadas a procesadores físicos.</text>
+      </svg>
+      <p class="caption">El ciclo PCAM. Los dos primeros pasos son agnósticos al hardware; los dos últimos lo tienen en cuenta. Iterar hacia atrás es normal.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>1 · Particionado</h2>
+    <p>Descomponer el problema en <strong>muchas tareas pequeñas</strong>. El objetivo es maximizar el paralelismo potencial sin pensar todavía en qué hardware se ejecutará.</p>
+
+    <h3>Dos estilos de descomposición</h3>
+
+    <div class="comparison">
+      <div class="col">
+        <h4>Por datos</h4>
+        <p>Se divide la <em>estructura de datos</em>. Cada tarea procesa una parte. Es lo más habitual en problemas regulares (multiplicación de matrices, integración numérica, simulaciones de mallas).</p>
+        <p>Variantes: dividir por filas, por columnas, por bloques, por subdominios.</p>
+      </div>
+      <div class="col alt">
+        <h4>Funcional</h4>
+        <p>Se divide el <em>algoritmo</em> en etapas o funciones distintas. Cada tarea hace algo diferente. Aparece en pipelines (procesado de imagen: lectura → filtrado → análisis → escritura).</p>
+      </div>
+    </div>
+
+    <h3>Reglas de calidad para esta fase</h3>
+    <ul>
+      <li><strong>Granularidad fina</strong>: produce muchas más tareas que procesos disponibles. La aglomeración después juntará lo que convenga.</li>
+      <li><strong>Tareas comparables</strong>: en tamaño y complejidad. Si unas son mucho mayores, habrá desequilibrio.</li>
+      <li><strong>Evitar trabajo redundante</strong>: si dos tareas calculan lo mismo, una debería calcularlo y comunicárselo a la otra.</li>
+      <li><strong>Variar al cambiar el tamaño</strong>: el particionado debería escalar de forma natural con <code>n</code>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2 · Comunicación</h2>
+    <p>Determinar qué datos necesita cada tarea de las demás. El resultado es un <strong>grafo de comunicación</strong>: nodos = tareas, aristas = mensajes.</p>
+
+    <h3>Patrones típicos</h3>
+
+    <ul>
+      <li><strong>Local</strong>: cada tarea habla con sus vecinas inmediatas. Característico de cálculos sobre mallas, stencil, vida artificial.</li>
+      <li><strong>Global</strong>: muchas tareas con muchas. Reducciones (suma global), broadcast, transposición.</li>
+      <li><strong>Estructurado</strong>: patrón regular y predecible (grids, anillos, árboles).</li>
+      <li><strong>No estructurado</strong>: grafos arbitrarios (mallas adaptativas, simulaciones de partículas).</li>
+      <li><strong>Estático</strong>: el patrón no cambia con el tiempo.</li>
+      <li><strong>Dinámico</strong>: las comunicaciones varían según el estado.</li>
+      <li><strong>Síncrono</strong>: emisor y receptor coordinados.</li>
+      <li><strong>Asíncrono</strong>: pueden adelantarse o retrasarse.</li>
+    </ul>
+
+    <h3>Reglas de calidad</h3>
+    <ul>
+      <li>Distribución equilibrada de comunicaciones (que no sature un nodo o canal).</li>
+      <li>Cada tarea se comunica con un número pequeño de vecinas.</li>
+      <li>Comunicaciones que puedan ejecutarse <strong>en paralelo</strong> con cómputo.</li>
+      <li>Comunicaciones que puedan solaparse entre sí.</li>
+    </ul>
+
+    <div class="learning-hint">
+      Es la fase donde más detallas el algoritmo, pero también la más fácil de cambiar después. Si descubres en la fase de mapeo que tu patrón de comunicaciones congestiona la red, vuelve aquí.
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · Aglomeración</h2>
+    <p>Combinar tareas pequeñas en tareas mayores para <strong>balancear cómputo y comunicación</strong>. Hasta ahora hemos generado más tareas de las que necesitamos; ahora las agrupamos según convenga al hardware.</p>
+
+    <h3>Tres motivos para aglomerar</h3>
+
+    <ol>
+      <li><strong>Aumentar la granularidad</strong>: cada tarea hace más trabajo. Reduce el peso relativo de la comunicación (que tiene coste fijo t<sub>s</sub> por mensaje).</li>
+      <li><strong>Eliminar comunicaciones</strong>: si dos tareas que se comunican mucho se agrupan en una sola, esa comunicación desaparece.</li>
+      <li><strong>Preservar flexibilidad</strong>: las decisiones de mapeo posteriores se simplifican con menos tareas.</li>
+    </ol>
+
+    <h3>Reglas de calidad</h3>
+    <ul>
+      <li>Comunicación reducida en proporción al cómputo añadido (eficiencia).</li>
+      <li>Coste de comunicación predecible.</li>
+      <li>Si se replica cómputo en varias tareas, el ahorro de comunicación debe compensarlo.</li>
+      <li>Que el código resultante sea modificable: no se debe agrupar tanto que se pierda flexibilidad para distinto número de procesos.</li>
+    </ul>
+
+    <h3>Ejemplo: matrices</h3>
+    <p>Tras el particionado: <code>n²</code> tareas, cada una calcula un elemento <code>c[i][j]</code>. Tras aglomerar: <code>p</code> tareas, cada una calcula un bloque de filas <code>n/p × n</code>. La granularidad pasa de <code>O(n)</code> a <code>O(n²/p)</code>: el coste de cómputo absorbe la comunicación.</p>
+  </section>
+
+  <section>
+    <h2>4 · Mapeo</h2>
+    <p>Asignar las tareas aglomeradas a procesadores físicos. El objetivo: <strong>minimizar el tiempo total de ejecución</strong>.</p>
+
+    <h3>Dos estrategias antagónicas</h3>
+
+    <div class="comparison">
+      <div class="col">
+        <h4>Maximizar paralelismo</h4>
+        <p>Mapear tareas que pueden ejecutarse a la vez en procesadores distintos. Aumenta el paralelismo pero también las comunicaciones entre procesadores.</p>
+      </div>
+      <div class="col alt">
+        <h4>Minimizar comunicación</h4>
+        <p>Mapear tareas que se comunican mucho en el mismo procesador. Reduce el coste de comunicación pero también el paralelismo.</p>
+      </div>
+    </div>
+
+    <p>El buen mapeo es un compromiso entre las dos. Es un problema NP-duro en general, así que se usan heurísticas.</p>
+
+    <h3>Mapeo estático vs dinámico</h3>
+    <ul>
+      <li><strong>Estático</strong>: la asignación se decide en tiempo de compilación o al arrancar. Funciona bien cuando el trabajo se conoce de antemano (matrices, mallas regulares).</li>
+      <li><strong>Dinámico (balanceo de carga)</strong>: los procesadores piden trabajo a medida que terminan. Indispensable en problemas irregulares (búsqueda en árboles, simulaciones adaptativas).</li>
+    </ul>
+
+    <p>Esquemas dinámicos típicos: bolsa de tareas, maestro-esclavo, granja de procesos (los veremos en la <a href="sesion_12.html">sesión 12</a>).</p>
+  </section>
+
+  <section>
+    <h2>El ciclo no es lineal</h2>
+    <p>Las fases parecen secuenciales pero raramente lo son. Es habitual:</p>
+    <ul>
+      <li>Descubrir en el mapeo que el particionado generó tareas demasiado finas y volver atrás para aglomerar más.</li>
+      <li>Probar un patrón de comunicación, medir, y rediseñarlo.</li>
+      <li>Implementar un primer mapeo estático y luego añadir balanceo dinámico solo donde haga falta.</li>
+    </ul>
+
+    <p>La metodología no es una receta única: es un esqueleto sobre el que iterar.</p>
+  </section>
+
+  <section>
+    <h2>Ejemplo completo: difusión de calor 1D</h2>
+    <p>Una barra de longitud <code>L</code> dividida en <code>n</code> puntos. En cada paso temporal, la temperatura de cada punto se actualiza como media ponderada de sus vecinos:</p>
+
+<pre><code><span class="cm">// Secuencial</span>
+<span class="kw">for</span> (paso = <span class="nm">0</span>; paso &lt; T; paso++) {
+    <span class="kw">for</span> (i = <span class="nm">1</span>; i &lt; n - <span class="nm">1</span>; i++)
+        u_new[i] = u[i] + alfa * (u[i-<span class="nm">1</span>] - <span class="nm">2</span>*u[i] + u[i+<span class="nm">1</span>]);
+    swap(u, u_new);
+}</code></pre>
+
+    <h3>Aplicando PCAM</h3>
+    <ol>
+      <li><strong>Particionado</strong>: una tarea por punto. <code>n</code> tareas, cada una actualiza <code>u[i]</code>.</li>
+      <li><strong>Comunicación</strong>: cada tarea <code>i</code> necesita <code>u[i-1]</code> y <code>u[i+1]</code>. Patrón local de tipo «stencil».</li>
+      <li><strong>Aglomeración</strong>: cada proceso se queda con un bloque contiguo de <code>n/p</code> puntos. Solo necesita comunicar los <strong>bordes</strong> con sus dos vecinos (los <em>ghost cells</em>).</li>
+      <li><strong>Mapeo</strong>: <code>p</code> procesos en disposición lineal. Proceso <code>k</code> habla con el <code>k-1</code> y el <code>k+1</code>. Estático.</li>
+    </ol>
+
+    <p>Con comunicaciones no bloqueantes se puede solapar el cómputo del interior del bloque (que no necesita los datos del vecino) con la transferencia de los bordes.</p>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">PCAM aparece en preguntas de examen casi siempre. Asegúrate de poder explicar cada fase con un ejemplo concreto, no solo definirlas.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">¿Qué significa PCAM? ¿Quién lo propuso?</div>
+        <div class="answer">Particionado, Comunicación, Aglomeración, Mapeo. Ian Foster, en <em>Designing and Building Parallel Programs</em>. Es la metodología clásica de diseño de algoritmos paralelos.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Cuál es la diferencia entre descomposición por datos y descomposición funcional?</div>
+        <div class="answer">Por datos: divides la estructura de datos y cada tarea procesa una parte (mat × mat, integración). Funcional: divides el algoritmo en etapas distintas y cada tarea hace algo diferente (pipeline de procesado de imagen).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué la fase de particionado debe producir muchas más tareas que procesos?</div>
+        <div class="answer">Porque la aglomeración (fase 3) se encargará de agrupar lo que convenga al hardware. Si partes con muy pocas tareas, te limitas a ese tamaño. Empezar fino da flexibilidad.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué busca la fase de aglomeración?</div>
+        <div class="answer">Equilibrar cómputo y comunicación. Agrupa tareas pequeñas en mayores para aumentar la granularidad y reducir el peso relativo del coste fijo de las comunicaciones (t<sub>s</sub>).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Las dos estrategias antagónicas del mapeo.</div>
+        <div class="answer">Maximizar paralelismo (asignar a procesadores distintos las tareas que pueden ir en paralelo) vs minimizar comunicación (juntar en el mismo procesador las tareas que se hablan mucho). El buen mapeo es un compromiso entre las dos.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Cuándo conviene mapeo dinámico en lugar de estático?</div>
+        <div class="answer">Cuando el trabajo no es predecible: problemas irregulares, búsqueda en árboles, simulaciones adaptativas. El balanceo dinámico (bolsa de tareas, maestro-esclavo) compensa el coste de gestión.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">En la difusión de calor 1D paralelizada, ¿qué son las ghost cells?</div>
+        <div class="answer">Las posiciones extra al borde del bloque local de cada proceso, que almacenan los valores recibidos de los vecinos. Permiten calcular el stencil cerca del borde sin un caso especial. Son típicas de los códigos de stencil con descomposición por dominio.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Repaso de la sesión 6: ¿por qué la aglomeración mejora la relación cómputo/comunicación?</div>
+        <div class="answer">Porque el coste fijo t<sub>s</sub> se paga una vez por mensaje, no por dato. Si juntas dos tareas que se comunicaban mucho, eliminas mensajes y reduces ese coste fijo total. Además, mensajes más grandes amortizan mejor t<sub>s</sub>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿En qué fase de PCAM ya tienes que pensar en el hardware concreto?</div>
+        <div class="answer">En la aglomeración empieza a importar, pero es en el mapeo donde el hardware es central: número de procesos disponibles, topología de la red, presencia de GPU. Las dos primeras fases (particionado y comunicación) son agnósticas al hardware.</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_06.html">
+      <div class="nav-label">← Sesión 06</div>
+      <div class="nav-title">Análisis de algoritmos</div>
+    </a>
+    <a class="nav-link next" href="sesion_08.html">
+      <div class="nav-label">Sesión 08 →</div>
+      <div class="nav-title">Paralelismo de datos</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

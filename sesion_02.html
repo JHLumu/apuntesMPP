@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 02 · Introducción a la computación paralela — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 02 · BLOQUE I</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Paradigmas de<br>computación paralela</h1>
+    <p class="session-subtitle">Si la sesión 1 inventarió el hardware, esta inventaría los <em>modelos de programación</em>. Saber cuál encaja en cada arquitectura ahorra muchas horas de depuración en las prácticas.</p>
+  </header>
+
+  <section>
+    <h2>Las tres familias de paradigmas</h2>
+    <p>La taxonomía clásica de Flynn distingue arquitecturas según cuántas instrucciones y datos manejan a la vez (SISD, SIMD, MIMD). Pero a la hora de <em>programar</em>, lo relevante es <strong>cómo se comparte la información</strong> entre los elementos de proceso. Eso reduce el panorama a tres modelos.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 760 290" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Paradigmas de programación paralela">
+        <style>
+          .b { fill: #fff; stroke: #1a1a1a; stroke-width: 1.5; }
+          .b-warm { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .b-cool { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.5; }
+          .b-green { fill: #f0f4ec; stroke: #4a6b3a; stroke-width: 1.5; }
+          .t { font: 600 12px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .ts { font: 500 10px 'JetBrains Mono', monospace; fill: #3d3d3d; text-anchor: middle; }
+          .h { font: 700 14px 'Fraunces', serif; fill: #1a1a1a; text-anchor: middle; }
+          .arr { stroke: #1a1a1a; stroke-width: 1.5; fill: none; marker-end: url(#ar2); }
+          .arr-w { stroke: #c5410f; stroke-width: 1.5; fill: none; marker-end: url(#arw2); }
+          .arr-d { stroke: #1a1a1a; stroke-width: 1.5; fill: none; stroke-dasharray: 4 3; marker-end: url(#ar2); }
+        </style>
+        <defs>
+          <marker id="ar2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#1a1a1a"/>
+          </marker>
+          <marker id="arw2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <!-- 1 · Memoria compartida -->
+        <text x="120" y="25" class="h">Memoria compartida</text>
+        <rect class="b-warm" x="40" y="40" width="40" height="35"/>
+        <rect class="b-warm" x="100" y="40" width="40" height="35"/>
+        <rect class="b-warm" x="160" y="40" width="40" height="35"/>
+        <text class="ts" x="60" y="62">hilo 1</text>
+        <text class="ts" x="120" y="62">hilo 2</text>
+        <text class="ts" x="180" y="62">hilo 3</text>
+        <rect class="b" x="40" y="105" width="160" height="35"/>
+        <text class="t" x="120" y="128">memoria común</text>
+        <path class="arr" d="M 60 75 L 80 105"/>
+        <path class="arr" d="M 120 75 L 120 105"/>
+        <path class="arr" d="M 180 75 L 160 105"/>
+        <text class="ts" x="120" y="165" style="font-style: italic;">comunican por variables</text>
+        <text class="ts" x="120" y="180" style="font-style: italic;">compartidas</text>
+        <text class="t" x="120" y="210" style="fill: #c5410f;">OpenMP, Pthreads</text>
+        <text class="ts" x="120" y="225">SO ve cada hilo</text>
+        <text class="ts" x="120" y="240">como tarea ligera</text>
+
+        <!-- 2 · Paso de mensajes -->
+        <text x="380" y="25" class="h">Paso de mensajes</text>
+        <rect class="b-cool" x="270" y="40" width="55" height="60"/>
+        <rect class="b-cool" x="355" y="40" width="55" height="60"/>
+        <rect class="b-cool" x="440" y="40" width="55" height="60"/>
+        <text class="ts" x="297" y="60">proceso 1</text>
+        <rect class="b" x="277" y="68" width="42" height="22"/>
+        <text class="ts" x="298" y="83">mem 1</text>
+        <text class="ts" x="382" y="60">proceso 2</text>
+        <rect class="b" x="362" y="68" width="42" height="22"/>
+        <text class="ts" x="383" y="83">mem 2</text>
+        <text class="ts" x="467" y="60">proceso 3</text>
+        <rect class="b" x="447" y="68" width="42" height="22"/>
+        <text class="ts" x="468" y="83">mem 3</text>
+        <path class="arr-w" d="M 325 115 L 355 115"/>
+        <path class="arr-w" d="M 410 130 L 440 130"/>
+        <path class="arr-w" d="M 495 145 Q 510 145 510 130 Q 510 100 270 100 Q 268 130 280 145 L 275 130" stroke-dasharray="2 2"/>
+        <text class="ts" x="380" y="170" style="font-style: italic;">se intercambian datos</text>
+        <text class="ts" x="380" y="185" style="font-style: italic;">explícitamente</text>
+        <text class="t" x="380" y="210" style="fill: #2a5f7f;">MPI</text>
+        <text class="ts" x="380" y="225">cada proceso ve solo</text>
+        <text class="ts" x="380" y="240">su propia memoria</text>
+
+        <!-- 3 · SIMD -->
+        <text x="640" y="25" class="h">SIMD</text>
+        <rect class="b-green" x="555" y="40" width="160" height="22"/>
+        <text class="t" x="635" y="56" style="font-size: 10px;">una instrucción</text>
+        <g>
+          <rect class="b" x="555" y="75" width="22" height="22"/>
+          <rect class="b" x="582" y="75" width="22" height="22"/>
+          <rect class="b" x="609" y="75" width="22" height="22"/>
+          <rect class="b" x="636" y="75" width="22" height="22"/>
+          <rect class="b" x="663" y="75" width="22" height="22"/>
+          <rect class="b" x="690" y="75" width="22" height="22"/>
+          <text class="ts" x="566" y="91">d₁</text>
+          <text class="ts" x="593" y="91">d₂</text>
+          <text class="ts" x="620" y="91">d₃</text>
+          <text class="ts" x="647" y="91">d₄</text>
+          <text class="ts" x="674" y="91">d₅</text>
+          <text class="ts" x="701" y="91">d₆</text>
+        </g>
+        <path class="arr" d="M 566 62 L 566 75"/>
+        <path class="arr" d="M 593 62 L 593 75"/>
+        <path class="arr" d="M 620 62 L 620 75"/>
+        <path class="arr" d="M 647 62 L 647 75"/>
+        <path class="arr" d="M 674 62 L 674 75"/>
+        <path class="arr" d="M 701 62 L 701 75"/>
+        <text class="ts" x="635" y="115" style="font-style: italic;">misma operación sobre</text>
+        <text class="ts" x="635" y="130" style="font-style: italic;">muchos datos a la vez</text>
+        <text class="t" x="635" y="160" style="fill: #4a6b3a;">CUDA, OpenCL</text>
+        <text class="t" x="635" y="175" style="fill: #4a6b3a;">SSE/AVX</text>
+        <text class="ts" x="635" y="195">propio de las GPU y</text>
+        <text class="ts" x="635" y="210">unidades vectoriales</text>
+      </svg>
+      <p class="caption">Memoria compartida vs paso de mensajes vs SIMD: cambian quién ve qué memoria y cómo se sincroniza.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Memoria compartida en detalle</h2>
+
+    <h3>Cómo funciona</h3>
+    <p>Todos los hilos comparten un único espacio de direcciones. Para comunicar, basta con escribir y leer la misma variable. Es el modelo más cómodo conceptualmente, pero introduce dos problemas que volverán una y otra vez en el curso:</p>
+
+    <ul>
+      <li><strong>Condiciones de carrera</strong>: dos hilos escribiendo en la misma variable producen resultados impredecibles.</li>
+      <li><strong>Coste de sincronización</strong>: para evitar las carreras hace falta <em>exclusión mutua</em> (cerrojos, secciones críticas), y esa exclusión serializa partes del programa.</li>
+    </ul>
+
+    <h3>Entornos típicos</h3>
+    <ul>
+      <li><strong>OpenMP</strong>: directivas <code>#pragma</code>. Es lo que veremos en la sesión 3. Está estandarizado en C, C++ y Fortran.</li>
+      <li><strong>POSIX Threads (Pthreads)</strong>: biblioteca de bajo nivel. Mucho control, mucho código.</li>
+      <li><strong>Java threads, C++11 <code>std::thread</code></strong>: equivalentes nativos de cada lenguaje.</li>
+    </ul>
+
+    <div class="connection-note">
+      <a href="sesion_03.html">Sesión 03 · OpenMP</a>
+      <p>Detallaremos las directivas de OpenMP (<code>parallel</code>, <code>for</code>, <code>critical</code>, <code>reduction</code>) y las cláusulas de sharing de variables.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Paso de mensajes en detalle</h2>
+
+    <h3>Cómo funciona</h3>
+    <p>Cada proceso tiene su propio espacio de direcciones. No hay variables compartidas: si el proceso 1 quiere mandar algo al 2, el 1 ejecuta <code>send</code> y el 2 ejecuta <code>recv</code>. Es el modelo natural en sistemas distribuidos.</p>
+
+    <h3>Dos ejes para clasificar mensajes</h3>
+
+    <div class="comparison">
+      <div class="col">
+        <h4>Por número de procesos implicados</h4>
+        <p><strong>Punto a punto</strong>: un emisor, un receptor. Lo más básico.</p>
+        <p><strong>Globales (colectivas)</strong>: intervienen varios procesos a la vez. Por ejemplo <em>broadcast</em> (uno envía a todos), <em>scatter</em> (uno reparte trozos a todos), <em>gather</em> (todos envían a uno), <em>reduce</em> (todos envían y se combina).</p>
+      </div>
+      <div class="col alt">
+        <h4>Por sincronización</h4>
+        <p><strong>Síncronos</strong>: los procesos implicados se bloquean hasta que la comunicación se completa. Más fácil de razonar, menos eficiente.</p>
+        <p><strong>Asíncronos</strong>: el que envía no espera; el que recibe puede consultar si ha llegado algo y, si no, seguir trabajando. Permite solapar cómputo y comunicación.</p>
+      </div>
+    </div>
+
+    <h3>Topología de red vs topología lógica</h3>
+    <p>La <strong>topología física</strong> (anillo, malla, hipercubo, bus, completa) afecta al rendimiento bruto, pero para programar suele importar más la <strong>topología lógica de procesos</strong>: cómo se ven los procesos entre sí en el código, independientemente de cómo estén cableados.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Topologías de red">
+        <style>
+          .n { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .l { stroke: #1a1a1a; stroke-width: 1.3; fill: none; }
+          .lb { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .di { font: italic 500 10px 'Fraunces', serif; fill: #c5410f; text-anchor: middle; }
+        </style>
+
+        <!-- Anillo -->
+        <text class="lb" x="80" y="20">Anillo</text>
+        <circle class="n" cx="40" cy="60" r="10"/>
+        <circle class="n" cx="80" cy="40" r="10"/>
+        <circle class="n" cx="120" cy="60" r="10"/>
+        <circle class="n" cx="120" cy="100" r="10"/>
+        <circle class="n" cx="80" cy="120" r="10"/>
+        <circle class="n" cx="40" cy="100" r="10"/>
+        <path class="l" d="M 50 60 L 70 40"/>
+        <path class="l" d="M 90 40 L 110 60"/>
+        <path class="l" d="M 120 70 L 120 90"/>
+        <path class="l" d="M 110 100 L 90 120"/>
+        <path class="l" d="M 70 120 L 50 100"/>
+        <path class="l" d="M 40 90 L 40 70"/>
+        <text class="di" x="80" y="155">diámetro: p/2</text>
+
+        <!-- Malla -->
+        <text class="lb" x="240" y="20">Malla</text>
+        <g>
+          <circle class="n" cx="190" cy="40" r="7"/>
+          <circle class="n" cx="220" cy="40" r="7"/>
+          <circle class="n" cx="250" cy="40" r="7"/>
+          <circle class="n" cx="280" cy="40" r="7"/>
+          <circle class="n" cx="190" cy="70" r="7"/>
+          <circle class="n" cx="220" cy="70" r="7"/>
+          <circle class="n" cx="250" cy="70" r="7"/>
+          <circle class="n" cx="280" cy="70" r="7"/>
+          <circle class="n" cx="190" cy="100" r="7"/>
+          <circle class="n" cx="220" cy="100" r="7"/>
+          <circle class="n" cx="250" cy="100" r="7"/>
+          <circle class="n" cx="280" cy="100" r="7"/>
+        </g>
+        <path class="l" d="M 197 40 L 213 40 M 227 40 L 243 40 M 257 40 L 273 40 M 197 70 L 213 70 M 227 70 L 243 70 M 257 70 L 273 70 M 197 100 L 213 100 M 227 100 L 243 100 M 257 100 L 273 100 M 190 47 L 190 63 M 220 47 L 220 63 M 250 47 L 250 63 M 280 47 L 280 63 M 190 77 L 190 93 M 220 77 L 220 93 M 250 77 L 250 93 M 280 77 L 280 93"/>
+        <text class="di" x="235" y="155">diámetro: √p</text>
+
+        <!-- Hipercubo (3D) -->
+        <text class="lb" x="420" y="20">Hipercubo</text>
+        <g>
+          <circle class="n" cx="380" cy="50" r="6"/>
+          <circle class="n" cx="440" cy="50" r="6"/>
+          <circle class="n" cx="380" cy="110" r="6"/>
+          <circle class="n" cx="440" cy="110" r="6"/>
+          <circle class="n" cx="400" cy="40" r="6"/>
+          <circle class="n" cx="460" cy="40" r="6"/>
+          <circle class="n" cx="400" cy="100" r="6"/>
+          <circle class="n" cx="460" cy="100" r="6"/>
+        </g>
+        <path class="l" d="M 386 50 L 434 50 M 386 110 L 434 110 M 406 40 L 454 40 M 406 100 L 454 100 M 380 56 L 380 104 M 440 56 L 440 104 M 400 46 L 400 94 M 460 46 L 460 94 M 384 47 L 396 43 M 444 47 L 456 43 M 384 107 L 396 103 M 444 107 L 456 103"/>
+        <text class="di" x="420" y="155">diámetro: log p</text>
+
+        <!-- Bus -->
+        <text class="lb" x="600" y="20">Bus</text>
+        <path class="l" d="M 540 75 L 660 75"/>
+        <line x1="555" y1="75" x2="555" y2="60" class="l"/>
+        <circle class="n" cx="555" cy="55" r="6"/>
+        <line x1="580" y1="75" x2="580" y2="60" class="l"/>
+        <circle class="n" cx="580" cy="55" r="6"/>
+        <line x1="605" y1="75" x2="605" y2="60" class="l"/>
+        <circle class="n" cx="605" cy="55" r="6"/>
+        <line x1="630" y1="75" x2="630" y2="60" class="l"/>
+        <circle class="n" cx="630" cy="55" r="6"/>
+        <line x1="655" y1="75" x2="655" y2="60" class="l"/>
+        <circle class="n" cx="655" cy="55" r="6"/>
+        <text class="di" x="600" y="155">diámetro: 2</text>
+        <text x="600" y="110" class="lb" style="font-size: 9px; font-style: italic;">conflicto en acceso</text>
+
+        <text x="350" y="200" class="lb" style="font-style: italic; font-size: 11px; fill: #3d3d3d;">El diámetro es el camino máximo entre dos nodos: marca la latencia peor.</text>
+      </svg>
+      <p class="caption">Topologías clásicas. En la práctica los clusters modernos usan grafos completos virtuales sobre redes como InfiniBand o Ethernet de alta velocidad.</p>
+    </div>
+
+    <div class="connection-note">
+      <a href="sesion_04.html">Sesión 04 · MPI</a>
+      <p>MPI implementa exactamente este modelo: punto a punto y colectivas, síncronas y asíncronas. Es el estándar de facto desde los años 90.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>SIMD: una sola instrucción, muchos datos</h2>
+    <p>El modelo más diferente. No hay «procesos» o «hilos» en el sentido clásico: hay <strong>una</strong> unidad de control que dirige decenas o cientos de unidades aritméticas, todas ejecutando la misma instrucción en el mismo instante, sobre <em>datos distintos</em>.</p>
+
+    <h3>Dónde aparece</h3>
+    <ul>
+      <li><strong>GPU</strong>: cientos o miles de cores agrupados en <em>warps</em> (NVIDIA) o <em>wavefronts</em> (AMD) que ejecutan en lock-step. Se programan con <strong>CUDA</strong> (específico de NVIDIA) o <strong>OpenCL</strong> (estándar abierto, multifabricante).</li>
+      <li><strong>Extensiones SIMD de CPU</strong>: SSE, AVX, AVX-512. Operan sobre registros de 128, 256 o 512 bits.</li>
+      <li><strong>Intel Xeon Phi (MIC)</strong>: x86 con SIMD muy ancha. Acepta OpenMP y MPI directamente, lo que facilita reutilizar código.</li>
+    </ul>
+
+    <div class="key-concept">
+      <span class="label">CUÁNDO USAR SIMD</span>
+      <h3>Si haces lo mismo a muchos datos, gánalo gratis</h3>
+      <p>SIMD brilla en algoritmos numéricos regulares: productos vector-matriz, convoluciones, simulaciones de partículas, redes neuronales. Cuanto más uniforme sea el trabajo (sin <em>if</em> dependientes del dato), mejor.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Cuál elegir: tabla de bolsillo</h2>
+
+    <table>
+      <tr>
+        <th>Si tu hardware es...</th>
+        <th>Usa este paradigma</th>
+        <th>Entorno típico</th>
+      </tr>
+      <tr>
+        <td>Un multicore (portátil, servidor, nodo)</td>
+        <td>Memoria compartida</td>
+        <td><strong>OpenMP</strong></td>
+      </tr>
+      <tr>
+        <td>Un cluster de nodos</td>
+        <td>Paso de mensajes</td>
+        <td><strong>MPI</strong></td>
+      </tr>
+      <tr>
+        <td>Una GPU (NVIDIA)</td>
+        <td>SIMD masivo</td>
+        <td><strong>CUDA</strong></td>
+      </tr>
+      <tr>
+        <td>GPU de cualquier fabricante</td>
+        <td>SIMD masivo</td>
+        <td><strong>OpenCL</strong></td>
+      </tr>
+      <tr>
+        <td>Cluster <em>con</em> multicores en cada nodo</td>
+        <td>Híbrido</td>
+        <td><strong>MPI + OpenMP</strong></td>
+      </tr>
+      <tr>
+        <td>Cluster <em>con</em> multicores y GPU en cada nodo</td>
+        <td>Híbrido multinivel</td>
+        <td><strong>MPI + OpenMP + CUDA</strong></td>
+      </tr>
+    </table>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">Algunas preguntas mezclan deliberadamente conceptos de la sesión 1: la práctica entreverada es lo que ayuda a discriminar ideas parecidas.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">¿Cuáles son los tres grandes paradigmas de programación paralela?</div>
+        <div class="answer">Memoria compartida (OpenMP, Pthreads), paso de mensajes (MPI) y SIMD (CUDA, OpenCL, AVX). Cambian quién comparte memoria con quién.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué problema fundamental introduce la memoria compartida que no aparece en paso de mensajes?</div>
+        <div class="answer">Las <strong>condiciones de carrera</strong>: como varios hilos pueden escribir la misma variable, hace falta exclusión mutua. En paso de mensajes cada proceso tiene su memoria, así que el problema desaparece (a cambio del coste de los mensajes).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué diferencia comunicación síncrona de asíncrona en paso de mensajes?</div>
+        <div class="answer">Síncrona: los procesos se bloquean hasta completar la operación. Asíncrona: el envío vuelve enseguida y se puede solapar cómputo con comunicación. La asíncrona es más eficiente pero más difícil de razonar.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Pon un ejemplo de comunicación colectiva y di para qué sirve.</div>
+        <div class="answer"><strong>Broadcast</strong>: un proceso envía a todos. Útil para repartir parámetros iniciales. <strong>Reduce</strong>: combina valores de todos los procesos en uno (suma, máximo, etc.). Otras: scatter, gather, allgather, allreduce.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué la topología <em>lógica</em> de procesos suele importar más que la <em>física</em> para programar?</div>
+        <div class="answer">Porque las librerías como MPI abstraen la red: tú escribes "envía del proceso 3 al 7" y el runtime usa la mejor ruta. Lo que tú controlas es <em>quién habla con quién</em> en tu algoritmo, y eso afecta directamente al rendimiento.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Es SIMD lo mismo que multithreading? Justifica.</div>
+        <div class="answer">No. Multithreading son varios hilos <em>independientes</em> que pueden ejecutar instrucciones distintas. SIMD ejecuta <em>la misma</em> instrucción sobre datos distintos. Una GPU combina ambas cosas: tiene muchos hilos, pero dentro de un warp todos están en lock-step (SIMD).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Repaso de la sesión 1: ¿qué nivel de paralelismo es AVX dentro de una sola CPU?</div>
+        <div class="answer">SIMD: unidades vectoriales. AVX-512 procesa 16 floats de 32 bits con una sola instrucción.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Si te dan un cluster con 10 nodos, cada uno con 16 cores y 1 GPU, ¿qué combinación de paradigmas tiene sentido?</div>
+        <div class="answer">Triple híbrido: <strong>MPI</strong> entre los 10 nodos, <strong>OpenMP</strong> entre los 16 cores de cada nodo, y <strong>CUDA</strong> (o equivalente) sobre la GPU para las partes muy regulares. Lo veremos en la sesión 5.</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_01.html">
+      <div class="nav-label">← Sesión 01</div>
+      <div class="nav-title">Presentación de sistemas</div>
+    </a>
+    <a class="nav-link next" href="sesion_03.html">
+      <div class="nav-label">Sesión 03 →</div>
+      <div class="nav-title">OpenMP</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

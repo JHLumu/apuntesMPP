@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 01 · Presentación de sistemas — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 01 · BLOQUE I</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Presentación<br>de sistemas</h1>
+    <p class="session-subtitle">Antes de programar en paralelo conviene mirar dónde se ejecutará el programa. Esta sesión inventaría los sistemas computacionales actuales y aclara vocabulario que se usará durante todo el curso.</p>
+  </header>
+
+  <section>
+    <h2>Por qué necesitamos paralelismo</h2>
+    <p>Los programas secuenciales tradicionales asumen que el procesador hace <em>una instrucción cada vez</em>. Hace dos décadas esa imagen ya no se corresponde con la realidad. Los sistemas computacionales actuales están constituidos por <strong>varios componentes</strong>, por lo que son sistemas paralelos por construcción.</p>
+
+    <p>El paralelismo se usa para tres tipos de problemas que la programación secuencial no resuelve bien:</p>
+    <ul>
+      <li><strong>Problemas grandes</strong> que no caben en la memoria de una única máquina.</li>
+      <li><strong>Problemas costosos</strong> que tardarían días o meses en secuencial.</li>
+      <li><strong>Problemas en tiempo real</strong> donde la respuesta tiene un plazo estricto (control de vuelo, vídeo, sensores).</li>
+    </ul>
+
+    <div class="learning-hint">
+      Antes de seguir leyendo, intenta listar tres ejemplos de problemas computacionales que se beneficien de paralelismo. Generar tus propios ejemplos —en lugar de aceptar los del libro— activa la elaboración, una de las técnicas con mejor evidencia para retener conceptos abstractos.
+    </div>
+  </section>
+
+  <section>
+    <h2>El zoo de sistemas paralelos</h2>
+    <p>No existe un único «ordenador paralelo». Los componentes pueden organizarse de formas muy distintas, y cada organización pide un paradigma de programación distinto.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 780 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Tipos de sistemas paralelos">
+        <style>
+          .box { fill: #ffffff; stroke: #1a1a1a; stroke-width: 1.5; }
+          .core { fill: #fdf6e3; stroke: #c5410f; }
+          .gpu { fill: #f0f5f8; stroke: #2a5f7f; }
+          .mem { fill: #efe8db; stroke: #b8860b; }
+          .net { fill: none; stroke: #4a6b3a; stroke-width: 2; stroke-dasharray: 4 3; }
+          .t { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .ts { font: 500 9px 'JetBrains Mono', monospace; fill: #3d3d3d; text-anchor: middle; }
+          .ttl { font: italic 700 12px 'Fraunces', serif; fill: #c5410f; text-anchor: middle; }
+        </style>
+
+        <!-- A: Multicore con memoria compartida -->
+        <text x="100" y="20" class="ttl">A · Multicore + memoria común</text>
+        <rect class="box" x="20" y="35" width="160" height="120" rx="3"/>
+        <rect class="core" x="35" y="55" width="30" height="30"/>
+        <rect class="core" x="70" y="55" width="30" height="30"/>
+        <rect class="core" x="105" y="55" width="30" height="30"/>
+        <rect class="core" x="140" y="55" width="30" height="30"/>
+        <text class="ts" x="50" y="73">c1</text>
+        <text class="ts" x="85" y="73">c2</text>
+        <text class="ts" x="120" y="73">c3</text>
+        <text class="ts" x="155" y="73">c4</text>
+        <rect class="mem" x="35" y="105" width="135" height="35"/>
+        <text class="t" x="102" y="127">RAM compartida</text>
+
+        <!-- B: Multicore + GPU -->
+        <text x="290" y="20" class="ttl">B · CPU + GPU</text>
+        <rect class="box" x="210" y="35" width="160" height="120" rx="3"/>
+        <rect class="core" x="225" y="55" width="55" height="35"/>
+        <text class="t" x="252" y="78">CPU</text>
+        <rect class="gpu" x="295" y="55" width="60" height="35"/>
+        <text class="t" x="325" y="78">GPU</text>
+        <rect class="mem" x="225" y="100" width="55" height="40"/>
+        <text class="ts" x="252" y="123">RAM</text>
+        <rect class="mem" x="295" y="100" width="60" height="40"/>
+        <text class="ts" x="325" y="123">VRAM</text>
+        <line x1="280" y1="120" x2="295" y2="120" stroke="#4a6b3a" stroke-width="1.5"/>
+        <text class="ts" x="287" y="115" style="font-size:8px;">PCIe</text>
+
+        <!-- C: Cluster -->
+        <text x="500" y="20" class="ttl">C · Cluster (red de nodos)</text>
+        <rect class="box" x="400" y="35" width="200" height="120" rx="3"/>
+        <g>
+          <rect class="core" x="415" y="55" width="35" height="25"/>
+          <rect class="mem" x="415" y="83" width="35" height="20"/>
+          <text class="ts" x="432" y="98">nodo1</text>
+        </g>
+        <g>
+          <rect class="core" x="465" y="55" width="35" height="25"/>
+          <rect class="mem" x="465" y="83" width="35" height="20"/>
+          <text class="ts" x="482" y="98">nodo2</text>
+        </g>
+        <g>
+          <rect class="core" x="515" y="55" width="35" height="25"/>
+          <rect class="mem" x="515" y="83" width="35" height="20"/>
+          <text class="ts" x="532" y="98">nodo3</text>
+        </g>
+        <g>
+          <rect class="core" x="565" y="55" width="30" height="25"/>
+          <rect class="mem" x="565" y="83" width="30" height="20"/>
+          <text class="ts" x="580" y="98">nodo4</text>
+        </g>
+        <path class="net" d="M 432 130 L 482 130 L 532 130 L 580 130"/>
+        <text class="t" x="500" y="148">red de interconexión</text>
+
+        <!-- D: Heterogéneo (clusters de redes) -->
+        <text x="650" y="20" class="ttl">D · Sistema distribuido</text>
+        <rect class="box" x="620" y="35" width="140" height="120" rx="3"/>
+        <rect class="core" x="635" y="55" width="40" height="30"/>
+        <text class="ts" x="655" y="74">cluster A</text>
+        <rect class="core" x="695" y="55" width="50" height="30"/>
+        <text class="ts" x="720" y="74">cluster B</text>
+        <rect class="core" x="655" y="105" width="70" height="30"/>
+        <text class="ts" x="690" y="124">remoto / nube</text>
+        <path class="net" d="M 655 85 L 690 105"/>
+        <path class="net" d="M 720 85 L 690 105"/>
+
+        <!-- Diferencias en la base -->
+        <text x="390" y="200" class="t" style="font-size: 13px;">Lo que cambia entre ellos</text>
+        <text x="100" y="225" class="ts">memoria</text>
+        <text x="100" y="240" class="t">común</text>
+        <text x="290" y="225" class="ts">memoria</text>
+        <text x="290" y="240" class="t">separada (PCIe)</text>
+        <text x="500" y="225" class="ts">memoria</text>
+        <text x="500" y="240" class="t">distribuida (red)</text>
+        <text x="690" y="225" class="ts">memoria + acceso</text>
+        <text x="690" y="240" class="t">jerárquico / WAN</text>
+
+        <text x="100" y="275" class="ts">paradigma</text>
+        <text x="100" y="290" class="t" style="fill: #c5410f;">OpenMP</text>
+        <text x="290" y="275" class="ts">paradigma</text>
+        <text x="290" y="290" class="t" style="fill: #c5410f;">CUDA / OpenCL</text>
+        <text x="500" y="275" class="ts">paradigma</text>
+        <text x="500" y="290" class="t" style="fill: #c5410f;">MPI</text>
+        <text x="690" y="275" class="ts">paradigma</text>
+        <text x="690" y="290" class="t" style="fill: #c5410f;">MPI + servicios</text>
+
+        <text x="390" y="335" class="ts" style="font-style: italic;">Un programa real combina varios: por ejemplo, MPI entre nodos + OpenMP dentro de cada nodo (sesión 5).</text>
+      </svg>
+      <p class="caption">Cada arquitectura impone un modelo de memoria —y por tanto un modelo de programación—.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tres palabras que conviene no confundir</h2>
+    <p>El vocabulario es la trampa más frecuente en este curso. Programación <em>concurrente</em>, <em>paralela</em> y <em>en tiempo real</em> suenan parecido y no son lo mismo.</p>
+
+    <div class="comparison">
+      <div class="col">
+        <h4>Ejecución concurrente</h4>
+        <p>Varias tareas <strong>aparentemente</strong> al mismo tiempo. Una sola CPU las alterna deprisa. El objetivo es <em>gestionar simultaneidad lógica</em>, no necesariamente ir más rápido. (Ej.: un servidor atendiendo cien clientes.)</p>
+      </div>
+      <div class="col alt">
+        <h4>Ejecución paralela</h4>
+        <p>Varias tareas <strong>realmente</strong> al mismo tiempo, en hardware con más de una CPU. El objetivo es <em>acelerar</em>. Es la materialización del paralelismo cuando hay recursos.</p>
+      </div>
+    </div>
+
+    <div class="key-concept">
+      <span class="label">REGLA MEMNÓNICA</span>
+      <h3>«Concurrencia ≠ paralelismo»</h3>
+      <p>Todo programa paralelo es concurrente, pero no al revés. Concurrencia es <em>diseñar</em> con varias unidades de proceso en mente; paralelismo es <em>ejecutar</em> esas unidades simultáneamente en hardware distinto.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Paralelismo dentro de una sola CPU</h2>
+    <p>Antes de hablar de varios procesadores conviene saber que <strong>una sola</strong> CPU moderna ya hace muchas cosas en paralelo. Identificarlas evita malentendidos en clase:</p>
+
+    <h3>1 · Múltiples unidades funcionales</h3>
+    <p>El procesador tiene varios sumadores o multiplicadores. Permite hacer dos sumas en el mismo ciclo si no dependen entre sí.</p>
+
+    <h3>2 · Segmentación (<em>pipelining</em>)</h3>
+    <p>Una instrucción se descompone en etapas (fetch, decode, execute, writeback). Cuando una está en «execute», la siguiente ya está en «decode». Cada ciclo se completa una instrucción aunque cada una tarde varios.</p>
+
+    <h3>3 · Unidades vectoriales (SIMD)</h3>
+    <p>Una sola instrucción opera sobre 4, 8 o 16 datos a la vez. Librerías como <code>SSE</code> o <code>AVX</code> exponen esta capacidad. Es el modelo que llevarán las GPU al extremo.</p>
+
+    <h3>4 · Multithreading hardware</h3>
+    <p>Un núcleo físico expone dos hilos lógicos al sistema operativo (Hyper-Threading de Intel, SMT de AMD). Cuando un hilo está esperando memoria, el otro avanza.</p>
+
+    <div class="connection-note">
+      <a href="sesion_05.html">Sesión 05 · Manycores</a>
+      <p>En GPU y Xeon Phi estas mismas ideas se llevan al extremo: cientos de unidades vectoriales coordinadas. La sesión 5 vuelve a este concepto desde el otro lado.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Otros términos del vocabulario</h2>
+    <p>Aparecerán dispersos en las próximas sesiones. Léelos ahora aunque no se entiendan del todo: el reconocimiento previo facilita aprenderlos cuando vuelvan a aparecer en contexto.</p>
+
+    <table>
+      <tr><th>Término</th><th>Idea central</th></tr>
+      <tr><td><strong>HPC</strong> (Computación de Altas Prestaciones)</td><td>Sacar el máximo de los supercomputadores. Ranking TOP500.</td></tr>
+      <tr><td><strong>Computación heterogénea</strong></td><td>Combinar dispositivos de naturaleza distinta (CPU + GPU + acelerador) en el mismo programa.</td></tr>
+      <tr><td><strong>Computación distribuida</strong></td><td>Nodos físicamente separados que cooperan vía red.</td></tr>
+      <tr><td><strong>Cloud computing</strong></td><td>Recursos compartidos accesibles bajo demanda.</td></tr>
+      <tr><td><strong>Programación adaptativa</strong></td><td>El programa decide en tiempo de ejecución cómo paralelizarse según el sistema concreto.</td></tr>
+      <tr><td><strong>Computación cuántica / biológica</strong></td><td>Paradigmas en investigación basados en física cuántica o sistemas biomoleculares.</td></tr>
+    </table>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">Pulsa cada tarjeta para revelar la respuesta. Intenta primero contestar mentalmente: el esfuerzo de recordar —incluso si fallas— es lo que consolida la memoria. Reléelo dentro de un día y vuelve a probar pasados tres.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">¿Qué diferencia, en una sola frase, paralelismo de concurrencia?</div>
+        <div class="answer">Concurrencia es ejecución <em>aparentemente</em> simultánea (puede ser en una sola CPU); paralelismo es ejecución <em>realmente</em> simultánea en hardware distinto, con el objetivo explícito de acelerar.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Cita tres motivos por los que la programación paralela es necesaria hoy.</div>
+        <div class="answer">Resolver problemas <strong>mayores</strong> (caben en la memoria agregada), <strong>más rápidos</strong> (alto coste computacional) y de <strong>tiempo real</strong> (plazos estrictos).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es Hyper-Threading / SMT y qué nivel de paralelismo representa?</div>
+        <div class="answer">Multithreading hardware: un núcleo físico expone dos hilos lógicos al sistema operativo. Es paralelismo <em>dentro</em> de un núcleo, no entre núcleos. Aprovecha latencias (espera de memoria) de uno de los hilos.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Nombra cuatro formas de paralelismo presentes dentro de una sola CPU «secuencial».</div>
+        <div class="answer">Múltiples unidades funcionales, segmentación (pipelining), unidades vectoriales (SIMD/SSE/AVX) y multithreading hardware.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué un cluster pide MPI y un multicore pide OpenMP?</div>
+        <div class="answer">El cluster tiene memoria <strong>distribuida</strong>: los nodos no comparten direcciones, así que la única forma de comunicar es enviar mensajes (MPI). El multicore comparte la memoria, así que basta con coordinar hilos sobre variables comunes (OpenMP).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Qué es la computación heterogénea, en tus palabras.</div>
+        <div class="answer">Combinar en el mismo programa dispositivos de naturaleza distinta —típicamente CPU + GPU u otros aceleradores—, repartiendo el trabajo según las fortalezas de cada uno.</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="index.html">
+      <div class="nav-label">← Índice</div>
+      <div class="nav-title">Volver al curso</div>
+    </a>
+    <a class="nav-link next" href="sesion_02.html">
+      <div class="nav-label">Sesión 02 →</div>
+      <div class="nav-title">Introducción a la computación paralela</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

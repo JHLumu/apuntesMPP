@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 10 · Grafo y pipeline — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 10 · BLOQUE IV</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Grafo<br>y pipeline</h1>
+    <p class="session-subtitle">Cuando las dependencias entre tareas tienen estructura: árboles de reducción, grafos acíclicos y cintas transportadoras de cómputo.</p>
+  </header>
+
+  <section>
+    <h2>El grafo de dependencias</h2>
+    <p>Hasta ahora las tareas eran o independientes (relajado) o se sincronizaban globalmente (síncrono). Pero muchas veces hay un patrón intermedio: <strong>cada tarea depende de unas pocas</strong>, y al terminar habilita a otras. Esto se captura con un <strong>grafo dirigido acíclico (DAG)</strong>.</p>
+
+    <div class="key-concept">
+      <span class="label">DEFINICIÓN</span>
+      <h3>Grafo de dependencias</h3>
+      <p>Grafo dirigido acíclico donde los <strong>nodos</strong> representan tareas y una <strong>arista</strong> de A a B significa que B no puede empezar hasta que A termine. Opcionalmente, los nodos se etiquetan con el coste de la tarea y las aristas con el coste de la comunicación.</p>
+    </div>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Grafo de dependencias ejemplo">
+        <style>
+          .nd { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .nd2 { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.5; }
+          .nd3 { fill: #f0f4ec; stroke: #4a6b3a; stroke-width: 1.5; }
+          .ed { stroke: #1a1a1a; stroke-width: 1.5; fill: none; marker-end: url(#aGr); }
+          .lb { font: 600 12px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .lc { font: 500 9px 'JetBrains Mono', monospace; fill: #3d3d3d; text-anchor: middle; }
+          .ti { font: italic 600 11px 'Fraunces', serif; fill: #3d3d3d; }
+        </style>
+        <defs>
+          <marker id="aGr" markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#1a1a1a"/>
+          </marker>
+        </defs>
+
+        <circle class="nd" cx="100" cy="50" r="22"/>
+        <text class="lb" x="100" y="54">A</text>
+        <circle class="nd" cx="100" cy="190" r="22"/>
+        <text class="lb" x="100" y="194">B</text>
+
+        <circle class="nd2" cx="280" cy="50" r="22"/>
+        <text class="lb" x="280" y="54">C</text>
+        <circle class="nd2" cx="280" cy="120" r="22"/>
+        <text class="lb" x="280" y="124">D</text>
+        <circle class="nd2" cx="280" cy="190" r="22"/>
+        <text class="lb" x="280" y="194">E</text>
+
+        <circle class="nd3" cx="460" cy="85" r="22"/>
+        <text class="lb" x="460" y="89">F</text>
+        <circle class="nd3" cx="460" cy="160" r="22"/>
+        <text class="lb" x="460" y="164">G</text>
+
+        <circle class="nd" cx="620" cy="120" r="22"/>
+        <text class="lb" x="620" y="124">H</text>
+
+        <path class="ed" d="M 122 50 L 258 50"/>
+        <path class="ed" d="M 122 60 L 258 110"/>
+        <path class="ed" d="M 122 180 L 258 130"/>
+        <path class="ed" d="M 122 190 L 258 190"/>
+        <path class="ed" d="M 302 50 L 438 78"/>
+        <path class="ed" d="M 302 120 L 438 88"/>
+        <path class="ed" d="M 302 120 L 438 152"/>
+        <path class="ed" d="M 302 190 L 438 165"/>
+        <path class="ed" d="M 482 90 L 598 115"/>
+        <path class="ed" d="M 482 155 L 598 125"/>
+
+        <text class="ti" x="100" y="20">nivel 0</text>
+        <text class="ti" x="280" y="20">nivel 1</text>
+        <text class="ti" x="460" y="55">nivel 2</text>
+        <text class="ti" x="620" y="90">nivel 3</text>
+
+        <text class="lc" x="350" y="230">Tareas del mismo nivel pueden ejecutarse en paralelo. Camino crítico: cadena más larga.</text>
+      </svg>
+      <p class="caption">El grafo da información esencial: el <strong>camino crítico</strong> (la cadena más larga) marca el tiempo mínimo posible. La <em>anchura</em> máxima del grafo indica cuánto paralelismo se puede aprovechar simultáneamente.</p>
+    </div>
+
+    <h3>Conceptos clave del grafo</h3>
+    <ul>
+      <li><strong>Camino crítico</strong>: secuencia más larga de tareas con dependencias. Aunque tengas infinitos procesadores, no puedes ir más rápido que el camino crítico.</li>
+      <li><strong>Grado de paralelismo</strong>: número máximo de tareas que pueden ejecutarse simultáneamente (anchura máxima del grafo en algún nivel).</li>
+      <li><strong>Granularidad</strong>: tamaño promedio de los nodos. Granularidad grande → más cómputo, menos overhead de gestión.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Paralelismo en árbol</h2>
+    <p>Caso particular del grafo: cuando la estructura es un árbol. Aparece en reducciones, ordenaciones, búsquedas y muchos algoritmos divide-y-vencerás.</p>
+
+    <h3>Ejemplo canónico: reducción en árbol</h3>
+    <p>Sumar n números con p procesos. En cada paso, la mitad de los procesos envían su parcial a la otra mitad, que acumula. Repetir log p veces.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Reducción en árbol">
+        <style>
+          .nd { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .ndx { fill: #d4cdb9; stroke: #1a1a1a; stroke-width: 1; opacity: 0.5; }
+          .ed { stroke: #c5410f; stroke-width: 1.5; fill: none; marker-end: url(#aTr); }
+          .lb { font: 600 10px 'JetBrains Mono', monospace; fill: #1a1a1a; text-anchor: middle; }
+          .lh { font: italic 600 10px 'Fraunces', serif; fill: #3d3d3d; }
+        </style>
+        <defs>
+          <marker id="aTr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <text class="lh" x="10" y="25">Nivel 0:</text>
+        <g>
+          <circle class="nd" cx="60" cy="40" r="15"/><text class="lb" x="60" y="44">3</text>
+          <circle class="nd" cx="130" cy="40" r="15"/><text class="lb" x="130" y="44">1</text>
+          <circle class="nd" cx="200" cy="40" r="15"/><text class="lb" x="200" y="44">7</text>
+          <circle class="nd" cx="270" cy="40" r="15"/><text class="lb" x="270" y="44">0</text>
+          <circle class="nd" cx="340" cy="40" r="15"/><text class="lb" x="340" y="44">4</text>
+          <circle class="nd" cx="410" cy="40" r="15"/><text class="lb" x="410" y="44">1</text>
+          <circle class="nd" cx="480" cy="40" r="15"/><text class="lb" x="480" y="44">6</text>
+          <circle class="nd" cx="550" cy="40" r="15"/><text class="lb" x="550" y="44">3</text>
+        </g>
+
+        <text class="lh" x="10" y="105">Nivel 1:</text>
+        <g>
+          <circle class="ndx" cx="60" cy="120" r="15"/><text class="lb" x="60" y="124">×</text>
+          <circle class="nd" cx="130" cy="120" r="15"/><text class="lb" x="130" y="124">4</text>
+          <circle class="ndx" cx="200" cy="120" r="15"/><text class="lb" x="200" y="124">×</text>
+          <circle class="nd" cx="270" cy="120" r="15"/><text class="lb" x="270" y="124">7</text>
+          <circle class="ndx" cx="340" cy="120" r="15"/><text class="lb" x="340" y="124">×</text>
+          <circle class="nd" cx="410" cy="120" r="15"/><text class="lb" x="410" y="124">5</text>
+          <circle class="ndx" cx="480" cy="120" r="15"/><text class="lb" x="480" y="124">×</text>
+          <circle class="nd" cx="550" cy="120" r="15"/><text class="lb" x="550" y="124">9</text>
+        </g>
+        <path class="ed" d="M 60 55 L 125 110"/>
+        <path class="ed" d="M 200 55 L 265 110"/>
+        <path class="ed" d="M 340 55 L 405 110"/>
+        <path class="ed" d="M 480 55 L 545 110"/>
+
+        <text class="lh" x="10" y="170">Nivel 2:</text>
+        <g>
+          <circle class="ndx" cx="130" cy="185" r="15"/>
+          <circle class="nd" cx="270" cy="185" r="15"/><text class="lb" x="270" y="189">11</text>
+          <circle class="ndx" cx="410" cy="185" r="15"/>
+          <circle class="nd" cx="550" cy="185" r="15"/><text class="lb" x="550" y="189">14</text>
+        </g>
+        <path class="ed" d="M 130 135 L 265 175"/>
+        <path class="ed" d="M 410 135 L 545 175"/>
+
+        <text class="lh" x="10" y="225">Nivel 3:</text>
+        <circle class="nd" cx="550" cy="225" r="17" style="stroke-width: 2.5;"/><text class="lb" x="550" y="229">25</text>
+        <path class="ed" d="M 270 200 L 535 220"/>
+
+        <text class="lh" x="620" y="125" style="text-anchor: middle; font-style: italic;">log p pasos</text>
+      </svg>
+      <p class="caption">Reducción binaria. En cada nivel se duplica la distancia entre los procesos que se comunican, lo que requiere log p fases pero solo p−1 sumas en total.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sistemas triangulares: ejemplo de coste y eficiencia</h2>
+    <p>Resolver <code>Lx = b</code> con <code>L</code> triangular inferior. Por sustitución hacia delante:</p>
+
+<pre><code><span class="kw">for</span> (i = <span class="nm">0</span>; i &lt; n; i++) {
+    x[i] = b[i];
+    <span class="kw">for</span> (j = <span class="nm">0</span>; j &lt; i; j++)
+        x[i] -= L[i][j] * x[j];
+    x[i] /= L[i][i];
+}</code></pre>
+
+    <p>Para calcular <code>x[i]</code> hace falta <code>x[0], ..., x[i-1]</code>. Cadena de dependencias. Coste secuencial: Σ(2 + 2i) ≈ n² + n.</p>
+
+    <p>Paralelizándolo por filas con difusión del valor calculado, el coste paralelo es aproximadamente <strong>5n</strong> (n pasos, cada uno con cómputo y comunicación de 5 operaciones).</p>
+
+    <ul>
+      <li>Speed-up: <code>S = (n² + n) / 5n ≈ n / 5</code>.</li>
+      <li>Eficiencia: <code>E = S/p = n / (5p)</code>. Con <code>p = n</code> (un proceso por fila), <code>E = 1/5 = 20%</code>.</li>
+    </ul>
+
+    <p>Las bajas prestaciones se deben a que el camino crítico (la cadena de dependencias) impide solapar todo: cada paso solo hay un dato «nuevo» que comunicar. Los problemas con cadenas largas escalan mal.</p>
+  </section>
+
+  <section>
+    <h2>Computación pipeline</h2>
+    <p>Cuando el grafo tiene la estructura de una <strong>cadena lineal</strong> de etapas, cada una pasando datos a la siguiente, se llama pipeline. Es la versión software de la segmentación que hace la propia CPU con sus instrucciones.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 720 270" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pipeline">
+        <style>
+          .st { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .dat { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1; }
+          .lb { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .lh { font: 700 12px 'Fraunces', serif; fill: #1a1a1a; }
+          .ed { stroke: #c5410f; stroke-width: 1.5; fill: none; marker-end: url(#aPi); }
+          .ts { font: 500 9px 'JetBrains Mono', monospace; fill: #3d3d3d; text-anchor: middle; }
+        </style>
+        <defs>
+          <marker id="aPi" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <text class="lh" x="20" y="25">Estructura del pipeline</text>
+        <rect class="st" x="60" y="35" width="100" height="35" rx="3"/>
+        <text class="lb" x="110" y="57">Etapa 1</text>
+        <rect class="st" x="200" y="35" width="100" height="35" rx="3"/>
+        <text class="lb" x="250" y="57">Etapa 2</text>
+        <rect class="st" x="340" y="35" width="100" height="35" rx="3"/>
+        <text class="lb" x="390" y="57">Etapa 3</text>
+        <rect class="st" x="480" y="35" width="100" height="35" rx="3"/>
+        <text class="lb" x="530" y="57">Etapa 4</text>
+        <path class="ed" d="M 160 52 L 195 52"/>
+        <path class="ed" d="M 300 52 L 335 52"/>
+        <path class="ed" d="M 440 52 L 475 52"/>
+        <path class="ed" d="M 30 52 L 55 52"/>
+        <text class="ts" x="30" y="40">datos →</text>
+        <path class="ed" d="M 585 52 L 620 52"/>
+        <text class="ts" x="650" y="55">→ salida</text>
+
+        <text class="lh" x="20" y="110">Diagrama temporal (4 datos pasando por 4 etapas)</text>
+        <text class="lb" x="40" y="135" style="text-anchor: start;">Et.1</text>
+        <text class="lb" x="40" y="155" style="text-anchor: start;">Et.2</text>
+        <text class="lb" x="40" y="175" style="text-anchor: start;">Et.3</text>
+        <text class="lb" x="40" y="195" style="text-anchor: start;">Et.4</text>
+
+        <rect class="dat" x="80" y="125" width="40" height="15"/><text class="ts" x="100" y="136">d1</text>
+        <rect class="dat" x="120" y="125" width="40" height="15"/><text class="ts" x="140" y="136">d2</text>
+        <rect class="dat" x="160" y="125" width="40" height="15"/><text class="ts" x="180" y="136">d3</text>
+        <rect class="dat" x="200" y="125" width="40" height="15"/><text class="ts" x="220" y="136">d4</text>
+
+        <rect class="dat" x="120" y="145" width="40" height="15"/><text class="ts" x="140" y="156">d1</text>
+        <rect class="dat" x="160" y="145" width="40" height="15"/><text class="ts" x="180" y="156">d2</text>
+        <rect class="dat" x="200" y="145" width="40" height="15"/><text class="ts" x="220" y="156">d3</text>
+        <rect class="dat" x="240" y="145" width="40" height="15"/><text class="ts" x="260" y="156">d4</text>
+
+        <rect class="dat" x="160" y="165" width="40" height="15"/><text class="ts" x="180" y="176">d1</text>
+        <rect class="dat" x="200" y="165" width="40" height="15"/><text class="ts" x="220" y="176">d2</text>
+        <rect class="dat" x="240" y="165" width="40" height="15"/><text class="ts" x="260" y="176">d3</text>
+        <rect class="dat" x="280" y="165" width="40" height="15"/><text class="ts" x="300" y="176">d4</text>
+
+        <rect class="dat" x="200" y="185" width="40" height="15"/><text class="ts" x="220" y="196">d1</text>
+        <rect class="dat" x="240" y="185" width="40" height="15"/><text class="ts" x="260" y="196">d2</text>
+        <rect class="dat" x="280" y="185" width="40" height="15"/><text class="ts" x="300" y="196">d3</text>
+        <rect class="dat" x="320" y="185" width="40" height="15"/><text class="ts" x="340" y="196">d4</text>
+
+        <line x1="200" y1="115" x2="200" y2="210" stroke="#4a6b3a" stroke-width="1" stroke-dasharray="3 3"/>
+        <text class="ts" x="120" y="230" style="font-style: italic;">arranque (etapas se llenan)</text>
+        <text class="ts" x="270" y="230" style="font-style: italic;">régimen permanente: una salida por unidad de tiempo</text>
+        <line x1="320" y1="115" x2="320" y2="210" stroke="#4a6b3a" stroke-width="1" stroke-dasharray="3 3"/>
+        <text class="ts" x="350" y="230" style="font-style: italic;">vaciado</text>
+
+        <text class="ts" x="200" y="260" style="font-style: italic; fill: #c5410f;">tiempo →</text>
+      </svg>
+      <p class="caption">El pipeline tiene tres regímenes: arranque (las etapas se van llenando), régimen permanente (todas trabajan a la vez) y vaciado (se procesa lo que queda).</p>
+    </div>
+
+    <h3>Análisis del pipeline</h3>
+    <p>Con <code>k</code> etapas iguales de coste <code>t</code> cada una, y <code>n</code> datos a procesar:</p>
+    <ul>
+      <li><strong>Tiempo secuencial</strong>: cada dato pasa por las k etapas: <code>t<sub>sec</sub> = n · k · t</code>.</li>
+      <li><strong>Tiempo pipeline</strong>: arranque (k − 1) + procesado de n datos + vaciado (incluido). Total ≈ <code>(n + k − 1) · t</code>.</li>
+      <li><strong>Speed-up</strong>: <code>S = n·k / (n + k − 1)</code>. Cuando <code>n ≫ k</code>, se aproxima a <code>k</code>.</li>
+    </ul>
+
+    <div class="key-concept">
+      <span class="label">CUÁNDO RENTABILIZA EL PIPELINE</span>
+      <h3>Necesitas muchos datos en cola</h3>
+      <p>El pipeline solo brilla cuando procesas <em>muchos</em> elementos: un único elemento no se acelera, porque pasa por todas las etapas en serie. Es el patrón natural cuando el problema es un <strong>flujo continuo</strong> de datos: vídeo, audio, sensores, gráficos por computador.</p>
+    </div>
+
+    <h3>Limitaciones del pipeline</h3>
+    <ul>
+      <li><strong>Etapa más lenta = cuello de botella</strong>: si una etapa tarda el doble que las demás, dicta el ritmo del régimen permanente. Hay que balancear los tiempos de las etapas.</li>
+      <li><strong>Pocos elementos = poco speed-up</strong>: el arranque y el vaciado dominan.</li>
+      <li><strong>Difícil ante <em>feedback</em></strong>: si una etapa necesita salida de la siguiente, no es un DAG y no se puede segmentar igual.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Ejemplos de pipeline</h2>
+
+    <h3>Procesado de imagen</h3>
+    <p>Captura → corrección de color → filtro de bordes → reconocimiento → guardado. Si tienes 100 imágenes a procesar, cada etapa puede trabajar en una distinta al mismo tiempo.</p>
+
+    <h3>Compilación</h3>
+    <p>Lexer → parser → análisis semántico → generación de código. Diseñado tradicionalmente como pipeline conceptual; en un compilador moderno son fases secuenciales para un único fichero, pero si compilas N ficheros pueden segmentarse.</p>
+
+    <h3>Multiplicación matriz-vector sistólica</h3>
+    <p>Patrón clásico en arquitecturas dedicadas: la matriz fluye por un anillo de procesos, cada uno multiplica su elemento y suma. Pipeline en hardware.</p>
+  </section>
+
+  <section>
+    <h2>Clases de equivalencia: un ejemplo de paralelismo en árbol</h2>
+    <p>Dado un conjunto de elementos agrupados en clases por una relación de equivalencia (representada como bosque de árboles donde cada elemento apunta a su «padre»), encontrar el representante de la clase de cada elemento.</p>
+
+    <p>Algoritmo paralelo: cada nodo lee el valor de su padre y se actualiza. Repetir. Después de log h pasos (h = altura), todos los nodos apuntan a la raíz.</p>
+
+    <p>El número de comunicaciones por nodo es como mucho una por paso, y el patrón es fijo: cada nodo siempre habla con el mismo padre. Es paralelismo en árbol con patrón estático.</p>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">Esta sesión introduce conceptos cuantitativos importantes: camino crítico, speed-up del pipeline, eficiencia con cadenas. Asegúrate de que recuerdas las fórmulas con ejemplos numéricos.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">¿Qué es un grafo de dependencias?</div>
+        <div class="answer">Grafo dirigido acíclico (DAG) donde los nodos son tareas y las aristas representan que una tarea no puede empezar hasta que termine la otra. Los nodos pueden etiquetarse con coste de cómputo y las aristas con coste de comunicación.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es el camino crítico?</div>
+        <div class="answer">La cadena más larga de tareas con dependencias en el grafo. Marca el tiempo mínimo absoluto que tardará el algoritmo, aunque tengas infinitos procesadores. Su longitud determina el límite teórico del speed-up.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Cuántos pasos necesita una reducción en árbol con p procesos?</div>
+        <div class="answer">log p pasos. En cada paso, la mitad de los procesos activos comunican su parcial a la otra mitad, que los suma. En total se hacen p − 1 sumas, pero distribuidas en log p fases.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Si el coste secuencial de un sistema triangular es n² + n y el paralelo es 5n, ¿cuál es la eficiencia con p = n procesos?</div>
+        <div class="answer">Speed-up = (n²+n)/(5n) ≈ n/5. Eficiencia = S/p = (n/5)/n = 1/5 = 20%. Eficiencia baja porque la cadena de dependencias impide el paralelismo masivo.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es la computación pipeline?</div>
+        <div class="answer">Esquema donde el cómputo se divide en una cadena lineal de etapas. Cada etapa procesa un dato, lo pasa a la siguiente y empieza con el siguiente dato. En régimen permanente todas las etapas trabajan a la vez.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Para un pipeline de k etapas iguales y n datos, ¿cuál es el speed-up aproximado?</div>
+        <div class="answer">S = n·k / (n + k − 1). Cuando n ≫ k, se aproxima a k. Cuando n es del orden de k, el arranque y vaciado pesan y el speed-up queda muy por debajo.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Cuál es la limitación más típica del pipeline?</div>
+        <div class="answer">El cuello de botella de la etapa más lenta: dicta el ritmo del régimen permanente. Si una etapa tarda 2 ms y las demás 1 ms, el sistema produce un resultado cada 2 ms. Hay que balancear los tiempos.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Repaso de la sesión 9: ¿cómo se relacionan el grafo de dependencias y el paralelismo síncrono?</div>
+        <div class="answer">El síncrono es un caso particular: grafo «por niveles» donde todas las tareas del mismo nivel son independientes entre sí y dependen solo del nivel anterior. La barrera de fase es la sincronización implícita entre niveles.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué el pipeline no acelera el procesado de un único dato?</div>
+        <div class="answer">Porque ese dato pasa por las k etapas secuencialmente. El pipeline gana paralelismo entre <em>diferentes</em> datos en distintas etapas a la vez. Sin múltiples datos, no hay paralelismo que extraer.</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_09.html">
+      <div class="nav-label">← Sesión 09</div>
+      <div class="nav-title">Relajado y síncrono</div>
+    </a>
+    <a class="nav-link next" href="sesion_11.html">
+      <div class="nav-label">Sesión 11 →</div>
+      <div class="nav-title">Divide y vencerás · PD</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

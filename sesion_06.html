@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sesión 06 · Análisis de algoritmos — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">SESIÓN 06 · BLOQUE III</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Análisis<br>de algoritmos paralelos</h1>
+    <p class="session-subtitle">Paralelizar sin medir es cosmética. Esta sesión introduce las métricas que decidirán si tu paralelización aporta algo: tiempo, speed-up, eficiencia y escalabilidad.</p>
+  </header>
+
+  <section>
+    <h2>El tiempo es la métrica raíz</h2>
+    <p>Todas las demás métricas derivan del tiempo. Hay dos tiempos que conviene distinguir:</p>
+
+    <div class="comparison">
+      <div class="col">
+        <h4>Tiempo secuencial — t(n)</h4>
+        <p>Tiempo del mejor algoritmo secuencial conocido para resolver el problema de tamaño <code>n</code>. <em>No</em> es el tiempo de tu programa paralelo ejecutado con un solo proceso.</p>
+      </div>
+      <div class="col alt">
+        <h4>Tiempo paralelo — t(n, p)</h4>
+        <p>Tiempo de tu programa paralelo de tamaño <code>n</code> con <code>p</code> elementos de proceso. Incluye <strong>cómputo</strong> + <strong>comunicación</strong> + <strong>sincronización</strong> + tiempo ocioso.</p>
+      </div>
+    </div>
+
+    <div class="learning-hint">
+      Hay una trampa filosófica con t(n): ¿cuál es «el mejor algoritmo secuencial»? Depende del tamaño, de la distribución de datos, de la máquina... A efectos prácticos el curso suele tomar el tiempo de un algoritmo secuencial razonable y bien implementado. Lo importante es declarar cuál es.
+    </div>
+  </section>
+
+  <section>
+    <h2>Speed-up: ganancia de velocidad</h2>
+
+    <div class="key-concept">
+      <span class="label">DEFINICIÓN</span>
+      <h3>S(n, p) = t(n) / t(n, p)</h3>
+      <p>Cuánto más rápido va el programa paralelo respecto al secuencial. Si S(n, p) = 4, vas cuatro veces más rápido con <code>p</code> procesos.</p>
+    </div>
+
+    <h3>Propiedades importantes</h3>
+    <ul>
+      <li><strong>S(n, p) ≤ p</strong> normalmente. Si fuera mayor, podrías simular el algoritmo paralelo en secuencial y obtener un mejor algoritmo secuencial, contradiciendo que partíamos del mejor.</li>
+      <li><strong>Speed-up superlineal</strong> (S &gt; p): existe, sobre todo por mejor uso de la jerarquía de memoria al usar varios procesadores (más caché agregada). Es una excepción, no la norma.</li>
+      <li>Para tamaño de problema <strong>fijo</strong>, al aumentar <code>p</code> el speed-up se aleja de p (la sobrecarga gana peso).</li>
+      <li>Para número de procesadores <strong>fijo</strong>, al aumentar <code>n</code> el speed-up suele mejorar (la sobrecarga se diluye).</li>
+    </ul>
+
+    <h3>Ley de Amdahl</h3>
+    <p>Si una fracción <code>f</code> del programa es inherentemente secuencial:</p>
+
+    <div class="key-concept">
+      <span class="label">LEY DE AMDAHL — TAMAÑO FIJO</span>
+      <h3>S(p) ≤ 1 / (f + (1−f)/p)</h3>
+      <p>Cuando <code>p → ∞</code>, el speed-up está acotado por <strong>1/f</strong>. Si tu programa tiene un 5% secuencial, jamás superarás un speed-up de 20, ni con un millón de procesadores.</p>
+    </div>
+
+    <h3>Ley de Gustafson</h3>
+    <p>Visión optimista alternativa. Si haces el problema más grande al aumentar <code>p</code> (no fijas el tamaño), la parte paralela crece y la secuencial sigue siendo casi constante:</p>
+
+    <div class="key-concept">
+      <span class="label">LEY DE GUSTAFSON — TAMAÑO ESCALADO</span>
+      <h3>S(p) = p − f · (p − 1)</h3>
+      <p>El speed-up crece linealmente con <code>p</code>. Justifica por qué la computación paralela tiene sentido aunque haya parte secuencial: el reto es resolver problemas <em>mayores</em>, no los mismos más deprisa.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Eficiencia: cuánto se aprovecha cada procesador</h2>
+
+    <div class="key-concept">
+      <span class="label">DEFINICIÓN</span>
+      <h3>E(n, p) = S(n, p) / p = t(n) / (p · t(n, p))</h3>
+      <p>Valor entre 0 y 1. Idealmente 1 (cada procesador trabaja todo el tiempo en algo útil). En la práctica baja porque hay comunicaciones, sincronizaciones e iteraciones desbalanceadas.</p>
+    </div>
+
+    <h3>Comportamiento típico</h3>
+    <ul>
+      <li>Para <code>n</code> fijo, al aumentar <code>p</code>, la eficiencia <strong>baja</strong>: los procesos pasan más tiempo coordinándose y menos calculando.</li>
+      <li>Para <code>p</code> fijo, al aumentar <code>n</code>, la eficiencia <strong>sube</strong>: la sobrecarga se diluye en más cómputo.</li>
+    </ul>
+
+    <div class="diagram">
+      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Speedup y eficiencia vs número de procesos">
+        <style>
+          .ax { stroke: #1a1a1a; stroke-width: 1.5; fill: none; }
+          .gd { stroke: #d4cdb9; stroke-width: 1; fill: none; }
+          .id { stroke: #4a6b3a; stroke-width: 1.5; stroke-dasharray: 4 3; fill: none; }
+          .rl { stroke: #c5410f; stroke-width: 2; fill: none; }
+          .lb { font: 500 11px 'Inter Tight', sans-serif; fill: #1a1a1a; }
+          .lbs { font: 500 9px 'JetBrains Mono', monospace; fill: #3d3d3d; }
+          .ti { font: 700 12px 'Fraunces', serif; fill: #1a1a1a; }
+        </style>
+
+        <!-- Speedup chart -->
+        <text x="40" y="20" class="ti">Speed-up vs p (para n fijo)</text>
+        <line class="ax" x1="50" y1="40" x2="50" y2="180"/>
+        <line class="ax" x1="50" y1="180" x2="290" y2="180"/>
+        <line class="gd" x1="50" y1="60" x2="290" y2="60"/>
+        <line class="gd" x1="50" y1="100" x2="290" y2="100"/>
+        <line class="gd" x1="50" y1="140" x2="290" y2="140"/>
+        <text class="lbs" x="40" y="183">0</text>
+        <text class="lbs" x="40" y="143">4</text>
+        <text class="lbs" x="40" y="103">8</text>
+        <text class="lbs" x="40" y="63">12</text>
+        <text class="lbs" x="170" y="200">número de procesos p</text>
+        <text class="lbs" x="20" y="110" transform="rotate(-90, 20, 110)">S(n,p)</text>
+        <line class="id" x1="50" y1="180" x2="290" y2="40"/>
+        <text class="lbs" x="260" y="55" style="fill: #4a6b3a;">ideal: S = p</text>
+        <path class="rl" d="M 50 180 Q 100 140, 130 130 Q 180 115, 220 120 Q 260 125, 280 135"/>
+        <text class="lbs" x="220" y="155" style="fill: #c5410f;">real</text>
+
+        <!-- Eficiencia chart -->
+        <text x="380" y="20" class="ti">Eficiencia vs p (para n fijo)</text>
+        <line class="ax" x1="390" y1="40" x2="390" y2="180"/>
+        <line class="ax" x1="390" y1="180" x2="660" y2="180"/>
+        <line class="gd" x1="390" y1="80" x2="660" y2="80"/>
+        <line class="gd" x1="390" y1="130" x2="660" y2="130"/>
+        <line class="id" x1="390" y1="80" x2="660" y2="80"/>
+        <text class="lbs" x="380" y="183">0</text>
+        <text class="lbs" x="380" y="133">0.5</text>
+        <text class="lbs" x="380" y="83">1.0</text>
+        <text class="lbs" x="510" y="200">número de procesos p</text>
+        <text class="lbs" x="360" y="110" transform="rotate(-90, 360, 110)">E(n,p)</text>
+        <text class="lbs" x="620" y="75" style="fill: #4a6b3a;">ideal: 1</text>
+        <path class="rl" d="M 390 80 Q 430 95, 470 110 Q 510 125, 550 145 Q 590 160, 660 170"/>
+        <text class="lbs" x="600" y="155" style="fill: #c5410f;">real</text>
+      </svg>
+      <p class="caption">Para tamaño de problema fijo, ambas métricas se alejan del ideal al añadir más procesos. La sobrecarga gana terreno.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Escalabilidad: ¿qué pasa cuando todo crece?</h2>
+    <p>Hasta ahora hemos fijado o <code>n</code> o <code>p</code>. La realidad es que ambos crecen: se compran sistemas más grandes para resolver problemas más grandes. La pregunta clave: <em>¿se mantienen las prestaciones cuando aumentamos <code>n</code> y <code>p</code> a la vez?</em></p>
+
+    <p>Un sistema es <strong>escalable</strong> si la eficiencia se mantiene (o casi) al aumentar el tamaño del sistema, siempre que aumentemos también el tamaño del problema en la proporción adecuada.</p>
+
+    <h3>Estudio experimental</h3>
+    <p>Se mide el rendimiento por elemento de proceso (flops por EP):</p>
+
+    <table>
+      <tr><th>p</th><th>Tamaño n</th><th>flops/EP</th></tr>
+      <tr><td>1</td><td>100</td><td>100</td></tr>
+      <tr><td>5</td><td>500</td><td>99</td></tr>
+      <tr><td>25</td><td>2500</td><td>96</td></tr>
+      <tr><td>125</td><td>12500</td><td>91</td></tr>
+    </table>
+    <p style="font-size: 0.9rem; font-style: italic; color: var(--ink-soft);">Buena escalabilidad: aumentando proporcionalmente <code>n</code> con <code>p</code>, los flops por EP se mantienen casi constantes.</p>
+
+    <table>
+      <tr><th>p</th><th>Tamaño n</th><th>flops/EP</th></tr>
+      <tr><td>1</td><td>100</td><td>100</td></tr>
+      <tr><td>5</td><td>500</td><td>102</td></tr>
+      <tr><td>25</td><td>2500</td><td>90</td></tr>
+      <tr><td>125</td><td>12500</td><td>46</td></tr>
+    </table>
+    <p style="font-size: 0.9rem; font-style: italic; color: var(--ink-soft);">Mala escalabilidad: a partir de cierto punto la sobrecarga arrasa con el rendimiento por proceso.</p>
+  </section>
+
+  <section>
+    <h2>Modelo simple de tiempo de comunicaciones</h2>
+    <p>Lo vimos en la sesión 4 y vuelve aquí porque es la base del análisis cuantitativo:</p>
+
+    <div class="key-concept">
+      <span class="label">FÓRMULA OMNIPRESENTE</span>
+      <h3>t<sub>com</sub>(n) = t<sub>s</sub> + n · t<sub>w</sub></h3>
+      <p><strong>t<sub>s</sub></strong>: tiempo de inicio (latencia). <strong>t<sub>w</sub></strong>: tiempo por palabra (inverso del ancho de banda). Ambos se miden experimentalmente para cada sistema haciendo una regresión lineal con mensajes de distintos tamaños.</p>
+    </div>
+
+    <h3>Cómo medir t<sub>s</sub> y t<sub>w</sub> en la práctica</h3>
+    <ol>
+      <li>Enviar mensajes de tamaño <code>n</code> = 1 KB, 2 KB, 4 KB, ..., 1 MB entre dos procesos.</li>
+      <li>Para cada tamaño, medir el tiempo de envío (repitiendo y promediando para reducir ruido).</li>
+      <li>Hacer una regresión lineal de t<sub>com</sub> vs <code>n</code>.</li>
+      <li>La <strong>ordenada en el origen</strong> da t<sub>s</sub>; la <strong>pendiente</strong> da t<sub>w</sub>.</li>
+    </ol>
+
+    <p>Valores típicos en un cluster moderno: t<sub>s</sub> del orden de microsegundos, t<sub>w</sub> del orden de nanosegundos por byte. La latencia domina hasta tamaños de unos pocos KB.</p>
+  </section>
+
+  <section>
+    <h2>Tiempo total de un algoritmo paralelo</h2>
+    <p>En la mayoría de casos se descompone en partes que se pueden modelar por separado:</p>
+
+    <div class="key-concept">
+      <span class="label">MODELO COMPUESTO</span>
+      <h3>t(n, p) = t<sub>cómputo</sub>(n, p) + t<sub>com</sub>(n, p) + t<sub>sinc</sub>(n, p) + t<sub>ocioso</sub></h3>
+      <p>Un buen análisis identifica cuál de estos términos domina y cómo escala. Si <code>t<sub>com</sub></code> crece más rápido que <code>t<sub>cómputo</sub></code> al aumentar <code>p</code>, hay un límite duro al speed-up.</p>
+    </div>
+
+    <h3>Ejemplo: suma de n datos</h3>
+    <p>Suma de <code>n</code> elementos con <code>p</code> procesos por reducción en árbol:</p>
+    <ul>
+      <li><strong>Cómputo</strong>: cada proceso suma <code>n/p</code> elementos → <code>(n/p) · t<sub>c</sub></code>, donde <code>t<sub>c</sub></code> es el coste de una suma.</li>
+      <li><strong>Reducción</strong>: <code>log p</code> pasos, cada uno con una comunicación de un dato → <code>log p · (t<sub>s</sub> + t<sub>w</sub>)</code>.</li>
+    </ul>
+
+    <p>Tiempo total aproximado: <strong>t(n, p) ≈ (n/p) · t<sub>c</sub> + log p · (t<sub>s</sub> + t<sub>w</sub>)</strong></p>
+
+    <p>Para <code>n</code> grande, el primer término domina y el speed-up es casi ideal. Para <code>n</code> pequeño, el segundo término domina y paralelizar no merece la pena.</p>
+  </section>
+
+  <section>
+    <h2>Cuestiones prácticas al medir tiempos</h2>
+    <p>Errores frecuentes en las prácticas:</p>
+
+    <ul>
+      <li><strong>Medir una sola ejecución</strong>: el ruido del sistema falsea los resultados. Repite al menos 5–10 veces y promedia (o toma la mediana, o el mínimo).</li>
+      <li><strong>No precalentar</strong> (warm-up): la primera ejecución incluye carga de cachés, JIT, etc. Descártala.</li>
+      <li><strong>Confundir t<sub>cpu</sub> con t<sub>wall</sub></strong>: en paralelo lo que importa es el tiempo de pared. Funciones útiles: <code>omp_get_wtime()</code>, <code>MPI_Wtime()</code>.</li>
+      <li><strong>Comparar con un secuencial mal implementado</strong>: el speed-up parece mayor de lo real. Asegúrate de que el código secuencial usa optimizaciones (–O2, vectorización).</li>
+      <li><strong>Medir partes que no se paralelizan</strong>: si tu programa hace E/S al inicio y al final, ese tiempo no es comparable. Mide solo la región paralelizada.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Cómo presentar resultados</h2>
+    <p>Las prácticas piden tablas y gráficas. Una tabla mínima:</p>
+
+    <table>
+      <tr><th>n_hilos</th><th>t_ejec (s)</th><th>speed-up</th><th>eficiencia</th></tr>
+      <tr><td>1</td><td>12.40</td><td>1.00</td><td>1.00</td></tr>
+      <tr><td>2</td><td>6.32</td><td>1.96</td><td>0.98</td></tr>
+      <tr><td>4</td><td>3.24</td><td>3.83</td><td>0.96</td></tr>
+      <tr><td>8</td><td>1.74</td><td>7.13</td><td>0.89</td></tr>
+      <tr><td>16</td><td>1.05</td><td>11.81</td><td>0.74</td></tr>
+    </table>
+
+    <p>Y la gráfica obligatoria: speed-up vs número de procesos, con una línea para cada tamaño de problema. La línea ideal (S = p) suele superponerse para referencia visual.</p>
+  </section>
+
+  <div class="retrieval-section">
+    <h2 style="counter-increment: none;">Práctica de recuperación</h2>
+    <p class="retrieval-intro">Las fórmulas de esta sesión aparecen una y otra vez en el resto del curso y en el examen. Recuérdalas con números concretos antes que como abstracciones.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">Define speed-up y eficiencia con una fórmula.</div>
+        <div class="answer">S(n, p) = t(n) / t(n, p). E(n, p) = S(n, p) / p = t(n) / (p · t(n, p)). El speed-up está entre 1 y p; la eficiencia entre 0 y 1.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué el speed-up no suele superar p? ¿Cuándo sí puede?</div>
+        <div class="answer">Porque si lo superase, podrías simular el algoritmo paralelo en secuencial y obtener un mejor algoritmo secuencial. La excepción típica: el speed-up superlineal por efectos de caché (más procesadores → más caché agregada → cada uno trabaja con datos más rápidos).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué dice la ley de Amdahl?</div>
+        <div class="answer">Si una fracción <code>f</code> del programa es secuencial, el speed-up está acotado por 1/f sin importar cuántos procesadores uses. Un 5% secuencial limita el speed-up máximo a 20.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Y la ley de Gustafson? ¿En qué se diferencia de Amdahl?</div>
+        <div class="answer">Gustafson asume que aumentas el problema con los recursos: S(p) = p − f(p − 1). La parte paralela crece, la secuencial es casi constante. Da una visión optimista: justifica la programación paralela para problemas más grandes, no para acelerar los mismos.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué representan t<sub>s</sub> y t<sub>w</sub> en el modelo de comunicaciones?</div>
+        <div class="answer">t<sub>s</sub> = tiempo de inicio (latencia): coste fijo de iniciar una comunicación, independiente del tamaño. t<sub>w</sub> = tiempo por palabra (inverso del ancho de banda): coste por unidad de dato. El tiempo total de enviar n datos es t<sub>s</sub> + n·t<sub>w</sub>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué es un sistema escalable?</div>
+        <div class="answer">Aquel que mantiene aproximadamente la eficiencia al aumentar el tamaño del sistema (p), siempre que se aumente también el tamaño del problema (n) en la proporción adecuada.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Para la suma de n datos con p procesos por reducción en árbol, ¿cuál es el tiempo aproximado?</div>
+        <div class="answer">t(n, p) ≈ (n/p)·t<sub>c</sub> + log p · (t<sub>s</sub> + t<sub>w</sub>). Cómputo lineal en n/p, comunicaciones logarítmicas en p.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué hay que descartar la primera ejecución al medir tiempos?</div>
+        <div class="answer">Por el efecto «frío»: la primera vez se cargan cachés, se inicializan estructuras, el JIT compila. Si la incluyes en la media, la inflación es importante. Conviene hacer un warm-up y luego medir varias ejecuciones.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Repaso de la sesión 3: ¿qué función OpenMP devuelve el tiempo de pared con precisión doble?</div>
+        <div class="answer"><code>omp_get_wtime()</code>. En MPI, la equivalente es <code>MPI_Wtime()</code>. Ambas devuelven segundos como <code>double</code>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Si para p = 2 obtienes speed-up 1.96, eficiencia 0.98; para p = 16 obtienes 11.81, eficiencia 0.74. ¿Qué está pasando?</div>
+        <div class="answer">La eficiencia cae al aumentar p. Conforme se añaden procesos, la sobrecarga (comunicaciones, sincronizaciones, contención) crece más rápido que el cómputo útil. Para mantener buena eficiencia con 16 procesos, habría que aumentar el tamaño del problema.</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_05.html">
+      <div class="nav-label">← Sesión 05</div>
+      <div class="nav-title">Híbrida y manycores</div>
+    </a>
+    <a class="nav-link next" href="sesion_07.html">
+      <div class="nav-label">Sesión 07 →</div>
+      <div class="nav-title">Metodología de Foster</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>
