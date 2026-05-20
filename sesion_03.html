@@ -19,44 +19,84 @@
   </header>
 
   <section>
-    <h2>El modelo fork–join</h2>
-    <p>Un programa OpenMP empieza con <strong>un único hilo</strong>, el maestro. Cuando encuentra una <em>región paralela</em>, crea un equipo de hilos esclavos. Todos ejecutan el bloque a la vez; al final del bloque, los esclavos se destruyen (o se duermen) y vuelve a haber un único hilo. Ese ciclo se llama <strong>fork–join</strong>.</p>
+    <h2>Antes de OpenMP: el problema que viene a resolver</h2>
+    <p>Para entender por qué OpenMP se ve como se ve, hay que situarlo entre dos extremos del paralelismo. La sesión 2 dejó este eje planteado; aquí lo cerramos.</p>
 
-    <div class="diagram">
-      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Modelo fork-join">
-        <style>
-          .m { stroke: #c5410f; stroke-width: 3; fill: none; }
-          .s { stroke: #2a5f7f; stroke-width: 2; fill: none; }
-          .l { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; }
-          .lc { font: 500 10px 'JetBrains Mono', monospace; fill: #c5410f; text-anchor: middle; }
-          .bg { fill: #fdf6e3; stroke: none; }
-        </style>
-        <rect class="bg" x="155" y="40" width="170" height="120"/>
-        <rect class="bg" x="430" y="40" width="170" height="120"/>
-        <!-- Hilo maestro -->
-        <path class="m" d="M 50 100 L 700 100"/>
-        <text class="lc" x="50" y="90">maestro</text>
-        <!-- Region paralela 1 -->
-        <path class="s" d="M 155 100 L 200 60 L 280 60 L 325 100"/>
-        <path class="s" d="M 155 100 L 200 80 L 280 80 L 325 100"/>
-        <path class="s" d="M 155 100 L 200 120 L 280 120 L 325 100"/>
-        <path class="s" d="M 155 100 L 200 140 L 280 140 L 325 100"/>
-        <text class="lc" x="240" y="35">#pragma omp parallel</text>
-        <text class="l" x="155" y="180" style="font-size: 10px;">fork</text>
-        <text class="l" x="313" y="180" style="font-size: 10px;">join (barrera)</text>
-        <!-- Region paralela 2 -->
-        <path class="s" d="M 430 100 L 475 70 L 555 70 L 600 100"/>
-        <path class="s" d="M 430 100 L 475 90 L 555 90 L 600 100"/>
-        <path class="s" d="M 430 100 L 475 110 L 555 110 L 600 100"/>
-        <path class="s" d="M 430 100 L 475 130 L 555 130 L 600 100"/>
-        <text class="lc" x="515" y="35">otra región paralela</text>
-        <text class="l" x="50" y="200" style="font-size: 10px; font-style: italic;">El maestro participa también dentro de cada región. Entre regiones, el programa es secuencial.</text>
-      </svg>
-      <p class="caption">Las regiones paralelas se anidan, pero entre ellas el programa vuelve a ser secuencial. Si no usas regiones, OpenMP no hace nada.</p>
+    <div class="comparison">
+      <div class="col">
+        <h4>Paralelismo explícito</h4>
+        <p style="font-size: 0.95rem;">El programador especifica <em>cómo</em> cooperan los procesos: crea hilos, sincroniza, gestiona variables compartidas. El compilador tiene poco que hacer. Es lo que ofrece <code>pthread</code> en C o el modelo de threads de Java. Máximo control, máximo trabajo.</p>
+      </div>
+      <div class="col alt">
+        <h4>Paralelismo implícito</h4>
+        <p style="font-size: 0.95rem;">El programador escribe código secuencial y el <strong>compilador paralelizante</strong> inserta las instrucciones de paralelización. Tiene que analizar dependencias de datos —y cuando duda, no paraleliza. Mínimo esfuerzo, eficiencia limitada por la conservadora política del compilador.</p>
+      </div>
     </div>
 
+    <p>OpenMP se sitúa <strong>entre los dos</strong>. El programador <em>anota</em> el código secuencial con <em>directivas</em> que le indican al compilador qué se puede paralelizar y cómo. El compilador, ayudado por esas pistas, genera el código paralelo. Es el compromiso pragmático: el programador aporta el conocimiento que el compilador no puede inferir solo, sin tener que escribir <code>pthread_create</code> a mano.</p>
+
     <div class="learning-hint">
-      Mantén esta imagen en la cabeza al leer código OpenMP. Casi todos los errores comunes (variables compartidas que no deberían serlo, sincronizaciones de más) se entienden mejor situándolos en este diagrama.
+      Un compilador paralelizante puro no paraleliza <code>a[i] = b[i] + a[i-1]</code> porque detecta una dependencia entre iteraciones. Si el programador <em>sabe</em> que en su caso <code>i-1</code> nunca apunta a una posición conflictiva, puede forzarlo. Esa es la idea: <strong>el programador firma con su pragma lo que el compilador no podía garantizar solo</strong>.
+    </div>
+  </section>
+
+  <section>
+    <h2>El modelo fork–join</h2>
+    <p>Un programa OpenMP empieza con <strong>un único hilo</strong>, el maestro. Cuando encuentra una <em>región paralela</em>, crea un equipo de hilos esclavos. Todos ejecutan el bloque a la vez; al final del bloque hay una <em>barrera implícita</em>: los esclavos se destruyen (o se duermen) y vuelve a haber un único hilo. Ese ciclo —duplicar y reunir— se llama <strong>fork–join</strong>.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 720 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Modelo fork-join">
+        <style>
+          .fj-m  { stroke: #c5410f; stroke-width: 3;   fill: none; }
+          .fj-s  { stroke: #2a5f7f; stroke-width: 1.8; fill: none; }
+          .fj-bg { fill: #fdf6e3; stroke: none; }
+          .fj-lh { font: 600 11px 'Inter Tight', sans-serif; fill: #c5410f; text-anchor: start; }
+          .fj-lp { font: 500 11px 'JetBrains Mono', monospace; fill: #1a1a1a; text-anchor: middle; }
+          .fj-ll { font: 500 10px 'Inter Tight', sans-serif; fill: #3d3d3d; text-anchor: middle; }
+          .fj-it { font: italic 11px 'Fraunces', serif; fill: #3d3d3d; text-anchor: start; }
+        </style>
+
+        <!-- Fondos de las regiones paralelas -->
+        <rect class="fj-bg" x="165" y="50" width="170" height="130"/>
+        <rect class="fj-bg" x="440" y="50" width="170" height="130"/>
+
+        <!-- Línea del maestro -->
+        <path class="fj-m" d="M 130 115 L 700 115"/>
+        <text class="fj-lh" x="20" y="119">maestro</text>
+
+        <!-- Región paralela 1 -->
+        <text class="fj-lp" x="250" y="42">#pragma omp parallel</text>
+        <path class="fj-s" d="M 165 115 L 210 75  L 290 75  L 335 115"/>
+        <path class="fj-s" d="M 165 115 L 210 95  L 290 95  L 335 115"/>
+        <path class="fj-s" d="M 165 115 L 210 135 L 290 135 L 335 115"/>
+        <path class="fj-s" d="M 165 115 L 210 155 L 290 155 L 335 115"/>
+        <text class="fj-ll" x="165" y="195">fork</text>
+        <text class="fj-ll" x="335" y="195">join (barrera)</text>
+
+        <!-- Región paralela 2 -->
+        <text class="fj-lp" x="525" y="42">otra región paralela</text>
+        <path class="fj-s" d="M 440 115 L 485 75  L 565 75  L 610 115"/>
+        <path class="fj-s" d="M 440 115 L 485 95  L 565 95  L 610 115"/>
+        <path class="fj-s" d="M 440 115 L 485 135 L 565 135 L 610 115"/>
+        <path class="fj-s" d="M 440 115 L 485 155 L 565 155 L 610 115"/>
+        <text class="fj-ll" x="440" y="195">fork</text>
+        <text class="fj-ll" x="610" y="195">join</text>
+
+        <!-- Nota inferior -->
+        <text class="fj-it" x="20" y="220">El maestro también participa dentro de cada región. Entre regiones el programa vuelve a ser secuencial.</text>
+      </svg>
+      <p class="caption">Las regiones paralelas se pueden anidar, pero entre ellas el programa vuelve a ser secuencial. Si no usas regiones, OpenMP no hace nada por ti.</p>
+    </div>
+
+    <p>Implicaciones que no son evidentes a primera vista:</p>
+    <ul>
+      <li><strong>Crear y destruir hilos cuesta</strong>. Una región paralela muy pequeña puede ser más lenta que la secuencial. En la práctica, los runtimes mantienen un <em>pool</em> de hilos durmiendo y los despiertan, pero aun así el overhead existe.</li>
+      <li><strong>Cuanto más tiempo pase el programa dentro de regiones paralelas, mejor</strong>. Lo dice la <a href="sesion_06.html">ley de Amdahl</a>: el speed-up está limitado por la parte serie. Granularidad gruesa &gt; granularidad fina.</li>
+      <li><strong>El maestro también trabaja</strong>. Si lanzas 4 hilos, hay 4 hilos, no 4 esclavos + 1 maestro. El maestro participa en el reparto.</li>
+    </ul>
+
+    <div class="learning-hint">
+      Mantén esta imagen en la cabeza al leer código OpenMP. Casi todos los errores comunes (variables compartidas que no deberían serlo, sincronizaciones de más, regiones paralelas que dan peor rendimiento que el código secuencial) se entienden mejor situándolos en este diagrama.
     </div>
   </section>
 
@@ -67,14 +107,36 @@
 <pre><code><span class="pr">#pragma omp</span> <span class="kw">nombre-directiva</span> [cláusulas]
    bloque estructurado</code></pre>
 
-    <p>El <em>bloque estructurado</em> es una sentencia (típicamente un <code>{ ... }</code>) con una sola entrada arriba y una sola salida abajo: nada de <code>goto</code> saltando fuera ni <code>return</code> abandonando la región. Esa restricción permite al compilador insertar la lógica de fork/join con seguridad.</p>
+    <p>El <em>bloque estructurado</em> es una sentencia (típicamente un <code>{ ... }</code>) con una sola entrada arriba y una sola salida abajo: nada de <code>goto</code> saltando fuera ni <code>return</code> abandonando la región. Esa restricción permite al compilador insertar la lógica de fork/join con seguridad: sabe dónde empieza el reparto y dónde está la barrera de cierre.</p>
+
+    <p>Compilación con <code>gcc</code> o <code>icc</code>:</p>
+<pre><code>$ gcc -O3 programa.c -fopenmp -o programa
+$ icc -O3 programa.c -qopenmp -o programa     <span class="cm"># -openmp en icc antiguas</span>
+$ OMP_NUM_THREADS=8 ./programa</code></pre>
+
+    <p>Si compilas <em>sin</em> <code>-fopenmp</code>, los <code>#pragma omp</code> se ignoran silenciosamente y el código se ejecuta secuencial. Esa es una de las gracias del modelo: <strong>el mismo código fuente vale para serie y paralelo</strong>. Las funciones de librería como <code>omp_get_thread_num()</code> sí dejan de existir, por eso suelen aparecer dentro de <code>#ifdef _OPENMP</code>:</p>
+
+<pre><code><span class="pr">#include</span> <span class="st">&lt;omp.h&gt;</span>
+<span class="kw">int</span> main() {
+    <span class="kw">int</span> iam = <span class="nm">0</span>, np = <span class="nm">1</span>;
+    <span class="pr">#pragma omp parallel</span> private(iam, np)
+    {
+    <span class="pr">#if defined</span>(_OPENMP)
+        np  = omp_get_num_threads();
+        iam = omp_get_thread_num();
+    <span class="pr">#endif</span>
+        printf(<span class="st">"Hello from thread %d out of %d\n"</span>, iam, np);
+    }
+}</code></pre>
+
+    <p>Con 4 hilos imprime cuatro líneas «Hello…», en orden no garantizado. Esa indeterminación es la primera lección práctica: <strong>la salida no es un buen indicador de corrección</strong>, porque dos ejecuciones pueden barajar las líneas distinto siendo ambas correctas.</p>
   </section>
 
   <section>
-    <h2>Las cuatro directivas que se usan el 90% del tiempo</h2>
+    <h2>Las directivas que se usan el 90 % del tiempo</h2>
 
     <h3>1 · <code>parallel</code> — crear el equipo</h3>
-    <p>Lanza un grupo de hilos que ejecutan el bloque <em>cada uno por entero</em>. Por defecto, el número de hilos lo decide la variable de entorno <code>OMP_NUM_THREADS</code> o la cláusula <code>num_threads</code>.</p>
+    <p>Lanza un grupo de hilos que ejecutan el bloque <em>cada uno por entero</em>. Por defecto, el número de hilos lo decide la variable de entorno <code>OMP_NUM_THREADS</code> o la cláusula <code>num_threads</code>; si no se fija, el runtime suele crear tantos hilos como cores tenga la máquina.</p>
 
 <pre><code><span class="pr">#pragma omp parallel</span> num_threads(<span class="nm">4</span>)
 {
@@ -82,7 +144,9 @@
     printf(<span class="st">"Hola desde hilo %d\n"</span>, tid);
 }   <span class="cm">// barrera implícita al cerrar la llave</span></code></pre>
 
-    <p>Cláusulas más usadas: <code>if</code> (decide en tiempo de ejecución si paralelizar), <code>private</code>, <code>shared</code>, <code>default</code>, <code>firstprivate</code>, <code>reduction</code>, <code>num_threads</code>.</p>
+    <p>Cláusulas frecuentes: <code>if(expr)</code> (paraleliza solo si <code>expr ≠ 0</code>; muy útil para evitar el overhead cuando <code>n</code> es pequeño), <code>num_threads(k)</code>, y todas las de alcance de datos (<code>private</code>, <code>shared</code>, <code>default</code>, <code>firstprivate</code>, <code>reduction</code>, <code>copyin</code>).</p>
+
+    <p>Cuando una región paralela aparece <em>dentro</em> de otra (<strong>anidamiento</strong>), cada hilo del nivel exterior se convierte en maestro de un nuevo equipo, si el anidamiento está habilitado (<code>omp_set_nested(1)</code> o <code>OMP_NESTED=true</code>).</p>
 
     <h3>2 · <code>for</code> — repartir un bucle</h3>
     <p>Dentro de una región paralela, reparte las iteraciones del bucle entre los hilos del equipo. <strong>No</strong> crea hilos por sí solo; presupone que ya existen.</p>
@@ -94,12 +158,19 @@
         a[i] = b[i] * <span class="nm">2</span>;
 }</code></pre>
 
-    <p>Como esta combinación es muy frecuente existe la forma abreviada <code>#pragma omp parallel for</code>.</p>
+    <p>Como esta combinación es muy frecuente existe la forma abreviada <code>#pragma omp parallel for</code>, que admite todas las cláusulas de ambos <em>salvo</em> <code>nowait</code>.</p>
 
-    <p>Restricciones del bucle: la inicialización es una asignación, el incremento una suma/resta, la condición una comparación con variable entera sin signo. Variables y límites deben ser enteros. Sin barrera al final si añades <code>nowait</code>.</p>
+    <p>El compilador exige que el bucle sea «canónico» para poder calcular el número de iteraciones antes de empezar:</p>
+    <ul>
+      <li><strong>Inicialización</strong>: una asignación simple (<code>i = 0</code>).</li>
+      <li><strong>Condición</strong>: una comparación de la variable de iteración (entera, sin signo en el formulario clásico de las diapositivas) con un valor invariable, usando <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> o <code>&gt;=</code>.</li>
+      <li><strong>Incremento</strong>: una suma o resta de una cantidad constante (<code>i++</code>, <code>i += 2</code>).</li>
+      <li>Tres partes con valores enteros, y dentro del bucle la variable de iteración no puede modificarse.</li>
+    </ul>
+    <p>Esto descarta directamente bucles <code>while</code>, bucles con número variable de iteraciones y recorridos de listas enlazadas. Para esos, OpenMP propone <strong>tareas</strong> (más abajo).</p>
 
     <h3>3 · <code>sections</code> — repartir bloques distintos</h3>
-    <p>Cuando lo que quieres paralelizar no es un bucle sino <em>tareas diferentes</em> que pueden hacerse a la vez.</p>
+    <p>Cuando lo que quieres paralelizar no es un bucle sino <em>tareas diferentes</em> que pueden hacerse a la vez. Cada <code>section</code> la ejecuta un único hilo del equipo.</p>
 
 <pre><code><span class="pr">#pragma omp parallel sections</span>
 {
@@ -111,77 +182,182 @@
 
     <span class="pr">#pragma omp section</span>
     sincronizar_db();
-}</code></pre>
+}   <span class="cm">// barrera implícita salvo nowait</span></code></pre>
 
-    <h3>4 · <code>single</code> — solo uno lo hace</h3>
-    <p>Dentro de una región paralela, marca un bloque que debe ejecutar <em>un único hilo</em> (no necesariamente el maestro). Útil para inicializaciones, E/S, o partes que no se pueden paralelizar.</p>
+    <p>Si hay menos secciones que hilos, algunos hilos se quedan sin trabajo (esperan en la barrera). Si hay más, los hilos van cogiendo secciones a medida que acaban las anteriores.</p>
+
+    <h3>4 · <code>single</code>, <code>master</code> y <code>ordered</code> — ejecución selectiva</h3>
+    <p>Dentro de una región paralela, hay momentos en que solo un hilo debe ejecutar algo: imprimir un resultado, leer de fichero, asignar una variable global. Hay tres mecanismos parecidos pero distintos:</p>
+
+    <table>
+      <tr><th>Directiva</th><th>Quién ejecuta</th><th>Barrera al final</th><th>Uso típico</th></tr>
+      <tr>
+        <td><code>single</code></td>
+        <td>El primer hilo que llega (no necesariamente el maestro)</td>
+        <td>Sí (salvo <code>nowait</code>)</td>
+        <td>Inicializaciones, E/S, asignaciones únicas</td>
+      </tr>
+      <tr>
+        <td><code>master</code></td>
+        <td>Obligatoriamente el hilo maestro</td>
+        <td>No</td>
+        <td>Reservar trabajo al hilo 0, sin sincronización</td>
+      </tr>
+      <tr>
+        <td><code>ordered</code></td>
+        <td>Hilos por orden de iteración secuencial</td>
+        <td>Implícita por iteración</td>
+        <td>Imprimir o registrar en orden dentro de un <code>for</code></td>
+      </tr>
+    </table>
 
 <pre><code><span class="pr">#pragma omp parallel</span>
 {
     <span class="pr">#pragma omp single</span>
-    inicializar();   <span class="cm">// solo un hilo entra aquí</span>
+    inicializar();   <span class="cm">// solo un hilo entra aquí; los demás esperan</span>
 
     <span class="pr">#pragma omp for</span>     <span class="cm">// todos vuelven a trabajar</span>
     <span class="kw">for</span> (i = <span class="nm">0</span>; i &lt; n; i++) ...
 }</code></pre>
-
-    <p>Parientes: <code>master</code> (similar pero forzando el hilo maestro y sin barrera), <code>ordered</code> (el bloque se ejecuta en el orden secuencial del bucle).</p>
   </section>
 
   <section>
     <h2>Variables: ¿quién ve qué?</h2>
-    <p>Es la fuente principal de errores en OpenMP. Hay tres «estados» principales para una variable dentro de una región paralela:</p>
+    <p>Es la fuente principal de errores en OpenMP. Una variable, al entrar a una región paralela, puede tener varios <em>alcances</em>:</p>
 
-    <div class="comparison">
-      <div class="col">
-        <h4><code>shared</code></h4>
-        <p>Una sola copia, visible para todos los hilos. Por defecto, las variables declaradas <em>antes</em> de la región son compartidas. Si dos hilos escriben, condición de carrera.</p>
-      </div>
-      <div class="col alt">
-        <h4><code>private</code></h4>
-        <p>Cada hilo tiene <em>su propia copia</em>, no inicializada. Las variables declaradas <em>dentro</em> de la región paralela son privadas automáticamente. La variable original conserva su valor al salir, sin verse afectada.</p>
-      </div>
+    <div class="diagram">
+      <svg viewBox="0 0 880 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alcances de variables en OpenMP">
+        <style>
+          .vbox    { stroke: #1a1a1a; stroke-width: 1.2; fill: #fdf6e3; }
+          .vboxp   { stroke: #2a5f7f; stroke-width: 1.2; fill: #f0f5f8; }
+          .vlbl    { font: 600 12px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .vlbl-l  { font: 600 13px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .vlbl-m  { font: 500 11px 'JetBrains Mono', monospace; fill: #1a1a1a; text-anchor: middle; }
+          .vlbl-s  { font: 400 10px 'Inter Tight', sans-serif; fill: #3d3d3d; text-anchor: middle; }
+          .varr    { stroke: #c5410f; stroke-width: 1.3; fill: none; marker-end: url(#vah); }
+          .vrow    { font: italic 600 11px 'Fraunces', serif; fill: #c5410f; text-anchor: end; }
+        </style>
+        <defs>
+          <marker id="vah" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <text class="vlbl-l" x="80" y="22">Antes</text>
+        <rect class="vbox" x="30" y="35" width="100" height="46"/>
+        <text class="vlbl-m" x="80" y="55">x = 7</text>
+        <text class="vlbl-s" x="80" y="71">(maestro)</text>
+
+        <text class="vlbl-l" x="510" y="22">Dentro de #pragma omp parallel</text>
+
+        <rect class="vboxp" x="190" y="35" width="150" height="46"/>
+        <text class="vlbl-m" x="265" y="54">shared(x)</text>
+        <text class="vlbl-s" x="265" y="70">una copia, todos la ven</text>
+
+        <rect class="vboxp" x="360" y="35" width="150" height="46"/>
+        <text class="vlbl-m" x="435" y="54">private(x)</text>
+        <text class="vlbl-s" x="435" y="70">copia local sin init</text>
+
+        <rect class="vboxp" x="530" y="35" width="160" height="46"/>
+        <text class="vlbl-m" x="610" y="54">firstprivate(x)</text>
+        <text class="vlbl-s" x="610" y="70">copia local, init = 7</text>
+
+        <rect class="vboxp" x="710" y="35" width="150" height="46"/>
+        <text class="vlbl-m" x="785" y="54">reduction(+:x)</text>
+        <text class="vlbl-s" x="785" y="70">copia local, neutro 0</text>
+
+        <path class="varr" d="M 130 58 L 188 58"/>
+
+        <text class="vlbl-l" x="510" y="125">Al salir de la región</text>
+
+        <rect class="vboxp" x="190" y="140" width="150" height="46"/>
+        <text class="vlbl-s" x="265" y="158">x = lo último que</text>
+        <text class="vlbl-s" x="265" y="172">le escribieran los hilos</text>
+
+        <rect class="vboxp" x="360" y="140" width="150" height="46"/>
+        <text class="vlbl-s" x="435" y="158">x conserva el</text>
+        <text class="vlbl-s" x="435" y="172">valor previo (= 7)</text>
+
+        <rect class="vboxp" x="530" y="140" width="160" height="46"/>
+        <text class="vlbl-s" x="610" y="158">x conserva el valor previo</text>
+        <text class="vlbl-s" x="610" y="172">(salvo lastprivate)</text>
+
+        <rect class="vboxp" x="710" y="140" width="150" height="46"/>
+        <text class="vlbl-s" x="785" y="158">x = 7 + Σ aportes</text>
+        <text class="vlbl-s" x="785" y="172">locales con op +</text>
+
+        <rect class="vboxp" x="30" y="220" width="820" height="70" rx="3"/>
+        <text class="vlbl" x="440" y="240">Regla mnemotécnica</text>
+        <text class="vlbl-s" x="440" y="258">Variables declaradas FUERA de la región son shared por defecto.</text>
+        <text class="vlbl-s" x="440" y="272">Variables declaradas DENTRO de la región son private automáticamente.</text>
+        <text class="vlbl-s" x="440" y="286">Con default(none) el compilador exige que declares el alcance de cada variable.</text>
+      </svg>
+      <p class="caption">El alcance decide qué pasa con la variable al entrar y al salir de la región. Pocas reglas, pero a memorizar bien.</p>
     </div>
 
-    <h4>Variantes útiles</h4>
+    <h4>Las cláusulas, una por una</h4>
     <ul>
-      <li><code>firstprivate(x)</code>: cada hilo tiene su copia, <strong>inicializada</strong> con el valor que tenía <code>x</code> al entrar.</li>
-      <li><code>lastprivate(x)</code>: en bucles, la copia que sale es la de la <strong>última iteración</strong> (la que habría salido en el orden secuencial).</li>
-      <li><code>default(shared|none)</code>: si pones <code>none</code>, el compilador exige declarar el sharing de cada variable. Es una costumbre defensiva muy recomendable en programas grandes.</li>
-      <li><code>threadprivate(lista)</code>: declara variables globales como privadas a cada hilo, persistentes entre regiones paralelas.</li>
+      <li><code>shared(lista)</code>: una sola copia visible para todos. Si varios hilos escriben, hay <strong>condición de carrera</strong>: necesita protección (<code>critical</code>, <code>atomic</code>, <code>reduction</code>).</li>
+      <li><code>private(lista)</code>: cada hilo tiene su copia, <strong>sin inicializar</strong>. Al salir, la variable original conserva su valor previo a la región (no se ve afectada por lo que hicieran los hilos).</li>
+      <li><code>firstprivate(lista)</code>: como <code>private</code>, pero cada copia se inicializa con el valor que tuviera la variable al entrar. Útil cuando los hilos necesitan partir de un valor común.</li>
+      <li><code>lastprivate(lista)</code>: como <code>private</code>, pero al salir la variable original recibe el valor que tendría en la <strong>última iteración secuencial</strong> (o la última sección). Útil cuando el bucle calcula algo cuyo último valor te interesa.</li>
+      <li><code>default(shared|none)</code>: si pones <code>none</code>, el compilador <strong>obliga</strong> a declarar el alcance de cada variable. Práctica defensiva muy recomendable.</li>
+      <li><code>threadprivate(lista)</code>: declara variables globales como privadas a cada hilo, persistentes entre regiones paralelas. Cada hilo tiene su copia que sobrevive al join.</li>
+      <li><code>copyin(lista)</code>: usado con <code>threadprivate</code>, copia el valor del maestro a las réplicas locales al entrar.</li>
     </ul>
 
     <div class="key-concept">
       <span class="label">CLÁUSULA ESTRELLA</span>
       <h3><code>reduction(op : lista)</code></h3>
-      <p>Cada hilo tiene su copia privada de la variable inicializada al elemento neutro de <code>op</code>. Al final de la región, todas las copias se combinan con <code>op</code> y el resultado va a la variable original. Sin <code>reduction</code>, calcular una suma o un máximo en paralelo exigiría una sección crítica que serializaría el bucle.</p>
+      <p>Cada hilo tiene su copia privada de la variable, inicializada al <em>elemento neutro</em> de <code>op</code> (0 para <code>+</code>, 1 para <code>*</code>, <code>-INF</code> para <code>max</code>…). Cada hilo opera sobre su copia local sin contención. Al final de la región, todas las copias se combinan con <code>op</code> y el resultado se acumula a la variable original. Sin <code>reduction</code>, calcular una suma o un máximo en paralelo exigiría una sección crítica que serializaría el bucle.</p>
 <pre style="margin-top: 1rem;"><code><span class="kw">double</span> suma = <span class="nm">0.0</span>;
 <span class="pr">#pragma omp parallel for</span> reduction(+: suma)
 <span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++)
     suma += a[i];</code></pre>
-      <p style="margin-top: 0.75rem;">Operadores soportados: <code>+, -, *, &amp;, |, ^, &amp;&amp;, ||, min, max</code>.</p>
+      <p style="margin-top: 0.75rem;">Operadores soportados: <code>+, -, *, &amp;, |, ^, &amp;&amp;, ||, min, max</code> (los dos últimos desde OpenMP 3.1).</p>
     </div>
+
+    <h4>Ejemplo canónico: cálculo de π por integración</h4>
+    <p>Aproximamos π integrando 4/(1 + x²) entre 0 y 1, con la regla del rectángulo de N subintervalos.</p>
+<pre><code><span class="kw">double</span> local, pi = <span class="nm">0.0</span>, w = <span class="nm">1.0</span> / N;
+<span class="kw">long</span> i;
+
+<span class="pr">#pragma omp parallel</span> private(i, local)
+{
+    <span class="pr">#pragma omp single</span>
+    pi = <span class="nm">0.0</span>;                          <span class="cm">// uno solo lo resetea</span>
+
+    <span class="pr">#pragma omp for</span> reduction(+: pi)
+    <span class="kw">for</span> (i = <span class="nm">0</span>; i &lt; N; i++) {
+        local = (i + <span class="nm">0.5</span>) * w;          <span class="cm">// centro del rectángulo</span>
+        pi += <span class="nm">4.0</span> / (<span class="nm">1.0</span> + local * local);
+    }
+}
+pi *= w;</code></pre>
+    <p>Por qué funciona: cada hilo tiene su <code>local</code> (privada) y su copia local de <code>pi</code> (gracias a <code>reduction</code>). El bucle no tiene dependencias entre iteraciones. Sin la cláusula <code>reduction</code>, tendríamos que poner <code>pi += …</code> en una sección crítica y el bucle se serializaría.</p>
   </section>
 
   <section>
     <h2>Sincronización</h2>
-    <p>Cuatro construcciones para coordinar hilos. Aprende a distinguirlas:</p>
+    <p>Cinco construcciones para coordinar hilos. Aprende a distinguirlas — los exámenes preguntan cuál usar en cada caso.</p>
 
     <h3><code>critical</code> — sección crítica</h3>
-    <p>El bloque se ejecuta en <strong>exclusión mutua</strong>: solo un hilo a la vez. Se puede dar un nombre para distinguir varias secciones críticas distintas que no deben bloquearse entre sí.</p>
+    <p>El bloque se ejecuta en <strong>exclusión mutua</strong>: solo un hilo a la vez. Se puede dar un nombre para distinguir varias secciones críticas distintas que no deben bloquearse entre sí (dos críticas con nombres distintos pueden ejecutarse a la vez).</p>
 <pre><code><span class="pr">#pragma omp critical</span>(actualizar_total)
 {
     total += valor_local;
     contador++;
 }</code></pre>
+    <p>Sin nombre, todas las críticas comparten la <em>misma</em> llave global: si tienes dos críticas distintas sin nombre en distintas partes del código, se serializan entre sí innecesariamente.</p>
 
     <h3><code>atomic</code> — actualización atómica</h3>
-    <p>Versión <em>muy</em> ligera de <code>critical</code> para operaciones simples: <code>x++</code>, <code>x += a</code>, etc. El compilador suele traducirlo a una instrucción atómica del hardware. Mucho más rápido que <code>critical</code> cuando aplica.</p>
+    <p>Versión <em>muy</em> ligera de <code>critical</code> para operaciones simples: <code>x++</code>, <code>++x</code>, <code>x--</code>, <code>--x</code>, <code>x op= expr</code>. El compilador suele traducirlo a una instrucción atómica del hardware (típicamente un <em>compare-and-swap</em> o un <em>fetch-and-add</em>). Mucho más rápido que <code>critical</code> cuando aplica.</p>
 <pre><code><span class="pr">#pragma omp atomic</span>
 contador++;</code></pre>
+    <p>Limitación importante: solo cubre la <em>expresión</em> que sigue, no un bloque arbitrario. Si necesitas «leer, decidir, escribir», sigue siendo <code>critical</code>.</p>
 
     <h3><code>barrier</code> — barrera explícita</h3>
-    <p>Ningún hilo pasa hasta que todos hayan llegado. Las directivas <code>for</code>, <code>sections</code> y <code>single</code> ya tienen barrera implícita al final, así que solo necesitas <code>barrier</code> manualmente en casos especiales.</p>
+    <p>Ningún hilo pasa hasta que todos hayan llegado. Las directivas <code>for</code>, <code>sections</code> y <code>single</code> ya tienen barrera implícita al final, así que solo necesitas <code>barrier</code> manualmente en casos especiales —por ejemplo, en medio de un bloque <code>parallel</code> sin <code>for</code>.</p>
 
     <h3>La regla del <code>nowait</code></h3>
     <p>Cuando varias directivas <code>for</code>/<code>sections</code>/<code>single</code> van seguidas dentro de la misma región paralela, las barreras implícitas <em>cuestan</em>. Si la siguiente directiva no depende de los resultados de la anterior, ponle <code>nowait</code> a la primera.</p>
@@ -193,90 +369,369 @@ contador++;</code></pre>
 
     <span class="pr">#pragma omp for</span>          <span class="cm">// esta sí espera</span>
     <span class="kw">for</span> (i = <span class="nm">0</span>; i &lt; m; i++) b[i] = g(i);
-}</code></pre>
+}   <span class="cm">// barrera implícita del parallel</span></code></pre>
+
+    <p>El primer bucle puede acabar a destiempo: el hilo que termine antes puede entrar al segundo bucle sin esperar. Solo es seguro si <code>a</code> y <code>b</code> son independientes.</p>
+
+    <h3>Llaves de librería: <code>omp_*_lock</code></h3>
+    <p>Cuando necesitas exclusión mutua programática (por ejemplo, una llave por elemento de un array, o una llave que un hilo intenta tomar y, si no puede, hace otra cosa), las directivas no llegan. Existen funciones de librería:</p>
+
+<pre><code>omp_lock_t lck;
+omp_init_lock(&amp;lck);
+
+<span class="pr">#pragma omp parallel</span> shared(lck) private(id)
+{
+    id = omp_get_thread_num();
+
+    omp_set_lock(&amp;lck);          <span class="cm">// bloquea hasta conseguir la llave</span>
+    printf(<span class="st">"hilo %d en sección\n"</span>, id);
+    omp_unset_lock(&amp;lck);
+
+    <span class="kw">while</span> (!omp_test_lock(&amp;lck))  <span class="cm">// no bloqueante: si no la consigue,</span>
+        skip(id);                <span class="cm">// hace otra cosa entretanto</span>
+    work(id);
+    omp_unset_lock(&amp;lck);
+}
+omp_destroy_lock(&amp;lck);</code></pre>
+
+    <p>El detalle importante es <code>omp_test_lock</code>: intenta tomar la llave; si la consigue devuelve verdadero, si no, falso (sin bloquear). Eso permite patrones de «si está libre actualizo, si no sigo y reintento más tarde».</p>
   </section>
 
   <section>
     <h2>Distribución de iteraciones: <code>schedule</code></h2>
-    <p>Por defecto, <code>for</code> reparte las iteraciones en bloques iguales (<code>static</code>). Pero si las iteraciones tienen costes desiguales —típico en problemas no regulares— eso desequilibra el trabajo. La cláusula <code>schedule</code> da control:</p>
+    <p>Por defecto, <code>for</code> reparte las iteraciones en bloques iguales (<code>static</code>). Pero si las iteraciones tienen costes desiguales —típico en problemas irregulares (matrices triangulares, búsquedas, refinamientos)— eso desequilibra el trabajo. La cláusula <code>schedule</code> da control.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Comparación de schedules">
+        <style>
+          .t0 { fill: #c5410f; }
+          .t1 { fill: #2a5f7f; }
+          .t2 { fill: #4a6b3a; }
+          .t3 { fill: #6b3e7a; }
+          .slab     { font: 600 12px 'Inter Tight', sans-serif; fill: #1a1a1a; }
+          .slab-leg { font: 500 11px 'Inter Tight', sans-serif; fill: #1a1a1a; }
+          rect.cell { stroke: #fff; stroke-width: 1; }
+        </style>
+
+        <!-- Leyenda arriba -->
+        <g transform="translate(20,8)">
+          <rect class="t0" x="0"   y="0" width="14" height="14"/>
+          <text class="slab-leg" x="20" y="11">hilo 0</text>
+          <rect class="t1" x="80"  y="0" width="14" height="14"/>
+          <text class="slab-leg" x="100" y="11">hilo 1</text>
+          <rect class="t2" x="160" y="0" width="14" height="14"/>
+          <text class="slab-leg" x="180" y="11">hilo 2</text>
+          <rect class="t3" x="240" y="0" width="14" height="14"/>
+          <text class="slab-leg" x="260" y="11">hilo 3</text>
+          <text class="slab-leg" x="340" y="11" style="font-style: italic; fill: #7a7468;">16 iteraciones, 4 hilos</text>
+        </g>
+
+        <!-- static, sin tamaño -->
+        <text class="slab" x="20" y="42">static (sin tamaño): un bloque contiguo por hilo</text>
+        <g transform="translate(20,50)">
+          <rect class="cell t0" x="0"   y="0" width="42" height="16"/>
+          <rect class="cell t0" x="42"  y="0" width="42" height="16"/>
+          <rect class="cell t0" x="84"  y="0" width="42" height="16"/>
+          <rect class="cell t0" x="126" y="0" width="42" height="16"/>
+          <rect class="cell t1" x="168" y="0" width="42" height="16"/>
+          <rect class="cell t1" x="210" y="0" width="42" height="16"/>
+          <rect class="cell t1" x="252" y="0" width="42" height="16"/>
+          <rect class="cell t1" x="294" y="0" width="42" height="16"/>
+          <rect class="cell t2" x="336" y="0" width="42" height="16"/>
+          <rect class="cell t2" x="378" y="0" width="42" height="16"/>
+          <rect class="cell t2" x="420" y="0" width="42" height="16"/>
+          <rect class="cell t2" x="462" y="0" width="42" height="16"/>
+          <rect class="cell t3" x="504" y="0" width="42" height="16"/>
+          <rect class="cell t3" x="546" y="0" width="42" height="16"/>
+          <rect class="cell t3" x="588" y="0" width="42" height="16"/>
+          <rect class="cell t3" x="630" y="0" width="42" height="16"/>
+        </g>
+
+        <!-- static, 2 -->
+        <text class="slab" x="20" y="92">static, 2: bloques de 2, round-robin entre hilos</text>
+        <g transform="translate(20,100)">
+          <rect class="cell t0" x="0"   y="0" width="84" height="16"/>
+          <rect class="cell t1" x="84"  y="0" width="84" height="16"/>
+          <rect class="cell t2" x="168" y="0" width="84" height="16"/>
+          <rect class="cell t3" x="252" y="0" width="84" height="16"/>
+          <rect class="cell t0" x="336" y="0" width="84" height="16"/>
+          <rect class="cell t1" x="420" y="0" width="84" height="16"/>
+          <rect class="cell t2" x="504" y="0" width="84" height="16"/>
+          <rect class="cell t3" x="588" y="0" width="84" height="16"/>
+        </g>
+
+        <!-- dynamic, 2 -->
+        <text class="slab" x="20" y="142">dynamic, 2: bloques de 2 que coge quien acaba antes</text>
+        <g transform="translate(20,150)">
+          <rect class="cell t0" x="0"   y="0" width="84" height="16"/>
+          <rect class="cell t1" x="84"  y="0" width="84" height="16"/>
+          <rect class="cell t0" x="168" y="0" width="84" height="16"/>
+          <rect class="cell t2" x="252" y="0" width="84" height="16"/>
+          <rect class="cell t3" x="336" y="0" width="84" height="16"/>
+          <rect class="cell t0" x="420" y="0" width="84" height="16"/>
+          <rect class="cell t1" x="504" y="0" width="84" height="16"/>
+          <rect class="cell t2" x="588" y="0" width="84" height="16"/>
+        </g>
+
+        <!-- guided -->
+        <text class="slab" x="20" y="192">guided: bloques decrecientes según queda trabajo</text>
+        <g transform="translate(20,200)">
+          <rect class="cell t0" x="0"   y="0" width="168" height="16"/>
+          <rect class="cell t1" x="168" y="0" width="126" height="16"/>
+          <rect class="cell t2" x="294" y="0" width="84"  height="16"/>
+          <rect class="cell t3" x="378" y="0" width="60"  height="16"/>
+          <rect class="cell t0" x="438" y="0" width="50"  height="16"/>
+          <rect class="cell t1" x="488" y="0" width="42"  height="16"/>
+          <rect class="cell t2" x="530" y="0" width="36"  height="16"/>
+          <rect class="cell t3" x="566" y="0" width="32"  height="16"/>
+          <rect class="cell t0" x="598" y="0" width="28"  height="16"/>
+          <rect class="cell t1" x="626" y="0" width="22"  height="16"/>
+          <rect class="cell t2" x="648" y="0" width="24"  height="16"/>
+        </g>
+
+        <text class="slab-leg" x="20" y="240" style="font-style: italic; fill: #7a7468;">El eje horizontal representa el espacio de iteraciones 0..15. Mismo color = misma iteración asignada al mismo hilo.</text>
+      </svg>
+      <p class="caption">Reparto de 16 iteraciones entre 4 hilos. <code>dynamic</code> y <code>guided</code> deciden en runtime: cada hilo coge un trozo al acabar el anterior.</p>
+    </div>
 
     <table>
       <tr><th>Política</th><th>Cómo reparte</th><th>Cuándo conviene</th></tr>
       <tr>
         <td><code>static[,chunk]</code></td>
-        <td>Trozos fijos asignados a priori, round-robin</td>
-        <td>Iteraciones de coste uniforme (la mayoría de los casos)</td>
+        <td>Trozos fijos asignados a priori, round-robin. Sin <code>chunk</code>, un bloque grande por hilo.</td>
+        <td>Iteraciones de coste uniforme (la mayoría de los casos). Overhead mínimo.</td>
       </tr>
       <tr>
         <td><code>dynamic[,chunk]</code></td>
-        <td>Cada hilo coge un trozo cuando acaba el suyo</td>
-        <td>Iteraciones de coste muy variable; añade overhead</td>
+        <td>Cada hilo coge un trozo cuando acaba el suyo. Sin <code>chunk</code>, equivale a <code>chunk = 1</code>.</td>
+        <td>Iteraciones de coste muy variable; coste de gestión no despreciable.</td>
       </tr>
       <tr>
         <td><code>guided[,chunk]</code></td>
-        <td>Como <code>dynamic</code>, pero los trozos van disminuyendo</td>
-        <td>Equilibrio entre overhead y balanceo</td>
+        <td>Como <code>dynamic</code>, pero los trozos van disminuyendo (empieza con bloques grandes y termina con pequeños).</td>
+        <td>Equilibrio entre overhead y balanceo. Buena opción por defecto si las iteraciones son irregulares.</td>
       </tr>
       <tr>
         <td><code>auto</code></td>
-        <td>Decide el compilador / runtime</td>
-        <td>Cuando no quieres pensarlo</td>
+        <td>Decide el compilador / runtime.</td>
+        <td>Cuando no quieres pensarlo (raramente óptimo).</td>
       </tr>
       <tr>
         <td><code>runtime</code></td>
-        <td>Se toma de la variable <code>OMP_SCHEDULE</code></td>
-        <td>Experimentación: cambias la política sin recompilar</td>
+        <td>Se toma de la variable de entorno <code>OMP_SCHEDULE</code>.</td>
+        <td>Experimentación: cambias la política sin recompilar.</td>
       </tr>
     </table>
   </section>
 
   <section>
     <h2>Tareas: <code>task</code> y <code>taskwait</code></h2>
-    <p>A partir de OpenMP 3.0, además del paralelismo «de bucle» existe el paralelismo <strong>de tareas</strong>. Una tarea es una unidad de trabajo que el runtime encola; cualquier hilo del equipo puede tomarla cuando esté libre.</p>
+    <p>A partir de OpenMP 3.0 (2008), además del paralelismo «de bucle» existe el paralelismo <strong>de tareas</strong>. El modelo cambia de <em>thread-centric</em> (creo hilos y reparto bucles) a <em>task-centric</em> (declaro unidades de trabajo y el runtime las planifica).</p>
 
-<pre><code><span class="kw">void</span> recorrer(node *n) {
-    <span class="kw">if</span> (n == <span class="kw">NULL</span>) <span class="kw">return</span>;
-    <span class="pr">#pragma omp task</span>
-    recorrer(n-&gt;izq);
-    <span class="pr">#pragma omp task</span>
-    recorrer(n-&gt;der);
-    procesar(n);
-    <span class="pr">#pragma omp taskwait</span>   <span class="cm">// espera a las dos subtareas</span>
+    <p>Una <strong>tarea</strong> es una unidad de trabajo que el runtime encola; cualquier hilo del equipo puede tomarla cuando esté libre. Las tareas existen porque hay paralelismo que las directivas anteriores no expresan bien:</p>
+    <ul>
+      <li><strong>Recorridos de listas</strong> cuya longitud no se conoce al entrar (no se puede <code>#pragma omp for</code> sobre un <code>while</code>).</li>
+      <li><strong>Recursión</strong>: divide y vencerás, árboles, backtracking. El paralelismo es irregular y sólo se descubre dentro de la propia ejecución.</li>
+      <li><strong>Anidamiento sin barreras innecesarias</strong>: al usar <code>parallel</code> dentro de <code>parallel</code>, las barreras implícitas pueden ser muy costosas.</li>
+    </ul>
+
+    <div class="diagram">
+      <svg viewBox="0 0 780 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Modelo de pool de tareas">
+        <style>
+          .pr-box { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.5; }
+          .tp-box { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
+          .tk     { fill: #d4e5cc; stroke: #4a6b3a; stroke-width: 1.2; }
+          .arr-encolar  { stroke: #c5410f; stroke-width: 1.4; fill: none; marker-end: url(#ah-e); stroke-dasharray: 4,3; }
+          .arr-ejecutar { stroke: #4a6b3a; stroke-width: 1.4; fill: none; marker-end: url(#ah-x); }
+          .tlbl   { font: 600 13px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .tlbl-s { font: 500 10px 'JetBrains Mono', monospace; fill: #3d3d3d; text-anchor: middle; }
+          .tlbl-c { font: italic 600 11px 'Fraunces', serif; text-anchor: middle; }
+          .hilo   { stroke: #2a5f7f; stroke-width: 2.5; fill: none; }
+        </style>
+        <defs>
+          <marker id="ah-e" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 z" fill="#c5410f"/>
+          </marker>
+          <marker id="ah-x" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 z" fill="#4a6b3a"/>
+          </marker>
+        </defs>
+
+        <!-- Región paralela -->
+        <rect class="pr-box" x="20" y="30" width="380" height="190" rx="3"/>
+        <text class="tlbl" x="210" y="50">parallel region (equipo de hilos)</text>
+
+        <!-- Hilos (líneas verticales) -->
+        <line class="hilo" x1="80"  y1="70" x2="80"  y2="205"/>
+        <line class="hilo" x1="160" y1="70" x2="160" y2="205"/>
+        <line class="hilo" x1="240" y1="70" x2="240" y2="205"/>
+        <line class="hilo" x1="320" y1="70" x2="320" y2="205"/>
+
+        <text class="tlbl-s" x="80"  y="65">h0</text>
+        <text class="tlbl-s" x="160" y="65">h1</text>
+        <text class="tlbl-s" x="240" y="65">h2</text>
+        <text class="tlbl-s" x="320" y="65">h3</text>
+
+        <!-- Tareas ejecutándose en hilos -->
+        <ellipse class="tk" cx="80"  cy="120" rx="24" ry="14"/>
+        <text class="tlbl-s" x="80" y="124">T1</text>
+        <ellipse class="tk" cx="240" cy="150" rx="24" ry="14"/>
+        <text class="tlbl-s" x="240" y="154">T4</text>
+
+        <!-- Pool -->
+        <rect class="tp-box" x="500" y="60" width="240" height="150" rx="3"/>
+        <text class="tlbl" x="620" y="80">task pool</text>
+
+        <ellipse class="tk" cx="555" cy="115" rx="24" ry="14"/>
+        <text class="tlbl-s" x="555" y="119">T2</text>
+        <ellipse class="tk" cx="620" cy="150" rx="24" ry="14"/>
+        <text class="tlbl-s" x="620" y="154">T3</text>
+        <ellipse class="tk" cx="685" cy="115" rx="24" ry="14"/>
+        <text class="tlbl-s" x="685" y="119">T5</text>
+
+        <!-- Flecha 1: encolar (hilo -> pool) -->
+        <path class="arr-encolar" d="M 110 110 q 180 -30 420 0"/>
+        <text class="tlbl-c" x="305" y="92" fill="#c5410f">#pragma omp task → encola</text>
+
+        <!-- Flecha 2: ejecutar (pool -> hilo) -->
+        <path class="arr-ejecutar" d="M 530 160 q -130 50 -270 0"/>
+        <text class="tlbl-c" x="395" y="200" fill="#4a6b3a">scheduler asigna a un hilo libre</text>
+
+        <text class="tlbl-s" x="390" y="245" style="font-style: italic; fill: #7a7468;">El hilo que ejecuta #pragma omp task NO ejecuta la tarea: la encola. Cualquier hilo del equipo la cogerá.</text>
+      </svg>
+      <p class="caption">Modelo task-centric: la directiva <code>task</code> crea una unidad de trabajo y la entrega al runtime; los hilos del equipo se la reparten dinámicamente.</p>
+    </div>
+
+    <h4>Sintaxis</h4>
+<pre><code><span class="pr">#pragma omp task</span> [clausulas]
+  bloque
+
+<span class="pr">#pragma omp taskwait</span>      <span class="cm">// espera a que terminen las hijas</span></code></pre>
+
+    <p>Cláusulas: <code>if(expr)</code> (si falsa, la tarea se ejecuta inmediatamente, sin encolar), <code>untied</code>, <code>private</code>, <code>firstprivate</code>, <code>shared</code>, <code>default(shared|none)</code>.</p>
+
+    <p>Un conjunto de tareas se ve forzado a completarse en: (a) una barrera implícita de hilos, (b) una barrera explícita (<code>#pragma omp barrier</code>) o (c) un <code>#pragma omp taskwait</code>.</p>
+
+    <h4>Tied vs untied</h4>
+    <p>Por defecto una tarea está <strong>tied</strong> (ligada) al hilo que la empieza a ejecutar: ese hilo la termina, aunque pueda hacer pausas en los <em>task scheduling points</em> (los puntos donde el runtime puede cambiar de tarea: <code>#pragma omp task</code>, <code>taskwait</code>, barreras, fin de tarea). Si declaras <code>untied</code>, cualquier hilo puede continuar la tarea desde donde otro la dejó. <strong>Untied es más flexible pero peligroso</strong>: no uses <code>threadprivate</code> ni <code>omp_get_thread_num()</code> dentro de tareas untied, porque cambian de hilo a mitad.</p>
+
+    <h4>Ejemplo: recorrer una lista</h4>
+    <p>Versión secuencial:</p>
+<pre><code><span class="kw">while</span> (p) {
+    do_independent_work(p);
+    p = p-&gt;next;
+}</code></pre>
+    <p>No se puede hacer con <code>#pragma omp for</code> (la condición no es entera). Con tareas:</p>
+<pre><code>p = listhead;
+<span class="pr">#pragma omp parallel</span>
+{
+    <span class="pr">#pragma omp single nowait</span>          <span class="cm">// un hilo genera tareas...</span>
+    {
+        <span class="kw">while</span> (p) {
+            <span class="pr">#pragma omp task</span> firstprivate(p)  <span class="cm">// ...que cualquiera ejecuta</span>
+            do_independent_work(p);
+            p = p-&gt;next;
+        }
+    }   <span class="cm">// fin del single (sin barrera)</span>
+}   <span class="cm">// barrera del parallel: espera a todas las tareas</span></code></pre>
+    <p>El <code>firstprivate(p)</code> es crítico: cada tarea recibe una <em>copia</em> del valor actual de <code>p</code>. Sin él, todas las tareas compartirían el mismo puntero y, cuando se ejecutaran, estarían apuntando al final de la lista.</p>
+
+    <h4>Ejemplo: Fibonacci recursivo</h4>
+<pre><code><span class="kw">long</span> fib(<span class="kw">int</span> n) {
+    <span class="kw">long</span> a, b;
+    <span class="kw">if</span> (n &lt; <span class="nm">2</span>) <span class="kw">return</span> n;
+
+    <span class="pr">#pragma omp task</span> shared(a)
+    a = fib(n - <span class="nm">1</span>);
+    <span class="pr">#pragma omp task</span> shared(b)
+    b = fib(n - <span class="nm">2</span>);
+
+    <span class="pr">#pragma omp taskwait</span>          <span class="cm">// hasta que terminen ambas</span>
+    <span class="kw">return</span> a + b;
 }
 
 <span class="cm">// Llamada inicial</span>
 <span class="pr">#pragma omp parallel</span>
 <span class="pr">#pragma omp single</span>
-recorrer(raiz);</code></pre>
+result = fib(<span class="nm">30</span>);</code></pre>
+    <p>Cuidado práctico: si <code>n</code> es pequeño, crear tareas cuesta más que ejecutar el código serie. La heurística estándar es un <strong>umbral de corte</strong>: a partir de cierto <code>n</code>, llamar a una versión secuencial. Lo veremos en <a href="sesion_11.html">divide y vencerás</a>.</p>
 
-    <p>Esto es lo que abre la puerta a paralelizar recursión (<a href="sesion_11.html">divide y vencerás</a>) y árboles irregulares.</p>
+    <div class="learning-hint">
+      Las tareas se generan <em>dentro</em> de una región paralela, pero normalmente desde un solo punto del código (un <code>single</code> que recorre y genera). Si todos los hilos generaran las mismas tareas, las duplicarías.
+    </div>
   </section>
 
   <section>
-    <h2>Funciones de librería que querrás conocer</h2>
+    <h2>Funciones de librería y variables de entorno</h2>
     <table>
       <tr><th>Función</th><th>Para qué</th></tr>
       <tr><td><code>omp_get_num_threads()</code></td><td>Número de hilos en la región actual</td></tr>
-      <tr><td><code>omp_get_thread_num()</code></td><td>Identificador del hilo (0 al maestro)</td></tr>
+      <tr><td><code>omp_get_thread_num()</code></td><td>Identificador del hilo (0 = maestro)</td></tr>
       <tr><td><code>omp_get_max_threads()</code></td><td>Cuántos hilos se crearían en la siguiente región</td></tr>
+      <tr><td><code>omp_get_num_procs()</code></td><td>Procesadores disponibles para el programa</td></tr>
       <tr><td><code>omp_set_num_threads(n)</code></td><td>Fijar el número de hilos por programa</td></tr>
-      <tr><td><code>omp_get_wtime()</code></td><td>Tiempo de pared (segundos, doble precisión)</td></tr>
-      <tr><td><code>omp_in_parallel()</code></td><td>Devuelve <code>true</code> si se está en una región paralela</td></tr>
+      <tr><td><code>omp_in_parallel()</code></td><td>Devuelve no-cero si se está en una región paralela</td></tr>
+      <tr><td><code>omp_set_nested(1)</code> / <code>omp_get_nested()</code></td><td>Habilita / consulta paralelismo anidado</td></tr>
+      <tr><td><code>omp_set_dynamic(1)</code> / <code>omp_get_dynamic()</code></td><td>Permite al runtime ajustar el número de hilos dinámicamente</td></tr>
+      <tr><td><code>omp_get_wtime()</code></td><td>Tiempo de pared (segundos, doble precisión). Mejor que <code>clock()</code> para medir programas paralelos.</td></tr>
+      <tr><td><code>omp_init_lock</code>, <code>omp_set_lock</code>, <code>omp_unset_lock</code>, <code>omp_test_lock</code>, <code>omp_destroy_lock</code></td><td>Llaves programáticas (sin estructura de bloque)</td></tr>
     </table>
-    <p>Y las variables de entorno equivalentes: <code>OMP_NUM_THREADS</code>, <code>OMP_SCHEDULE</code>, <code>OMP_NESTED</code>, <code>OMP_PROC_BIND</code>.</p>
+
+    <p>Variables de entorno que se establecen antes de ejecutar (en shell, con <code>export</code> o <code>setenv</code>):</p>
+    <table>
+      <tr><th>Variable</th><th>Función</th></tr>
+      <tr><td><code>OMP_NUM_THREADS</code></td><td>Número de hilos por defecto</td></tr>
+      <tr><td><code>OMP_SCHEDULE</code></td><td>Política de <code>schedule(runtime)</code> (p.ej. <code>"dynamic,4"</code>)</td></tr>
+      <tr><td><code>OMP_DYNAMIC</code></td><td>Habilita ajuste dinámico (<code>true</code>/<code>false</code>)</td></tr>
+      <tr><td><code>OMP_NESTED</code></td><td>Habilita anidamiento</td></tr>
+      <tr><td><code>OMP_PROC_BIND</code></td><td>Cómo se «pegan» los hilos a cores (<em>affinity</em>)</td></tr>
+    </table>
+
+    <p>Para saber qué versión de OpenMP soporta tu compilador (formato <em>aaaamm</em>):</p>
+<pre><code>$ echo | cpp -fopenmp -dM | grep -i open
+#define _OPENMP 201511      <span class="cm">// noviembre de 2015 → OpenMP 4.5</span></code></pre>
   </section>
 
   <section>
-    <h2>Ejemplo completo: suma de vectores</h2>
+    <h2>Cuidados prácticos</h2>
+
+    <h3>Aleatoriedad: <code>rand()</code> no es thread-safe</h3>
+    <p>Si paralelizas un Monte Carlo o una metaheurística, vas a generar números aleatorios. <code>rand()</code> mantiene <strong>estado global</strong>: dos hilos llamando a <code>rand</code> a la vez pueden serializarse (el sistema garantiza secuencialidad) o, peor, devolver la misma secuencia. Solución: usar <code>rand_r(&amp;seed)</code>, donde la semilla es <em>local</em> al hilo.</p>
+<pre><code><span class="pr">#pragma omp parallel</span> private(seed)
+{
+    seed = <span class="nm">12345</span> + omp_get_thread_num();   <span class="cm">// semilla por hilo</span>
+    <span class="pr">#pragma omp for</span>
+    <span class="kw">for</span> (i = <span class="nm">0</span>; i &lt; N; i++) {
+        <span class="kw">int</span> r = rand_r(&amp;seed);             <span class="cm">// thread-safe</span>
+        ...
+    }
+}</code></pre>
+
+    <h3>False sharing</h3>
+    <p>Si dos hilos escriben en variables distintas pero contiguas en memoria (que comparten línea de caché), el hardware fuerza a invalidar y recargar la línea constantemente. El programa es correcto, pero brutalmente lento. Síntoma: paralelizas y va <em>peor</em> que en serie. Mitigación: separar los datos en memoria o usar arrays con <em>padding</em>.</p>
+
+    <h3>Variables de bucle</h3>
+    <p>En <code>#pragma omp parallel for</code>, la variable de iteración del bucle es <em>automáticamente</em> privada. Pero si tienes bucles anidados, las variables interiores no lo son:</p>
+<pre><code><span class="pr">#pragma omp parallel for</span>            <span class="cm">// i es privada ✓</span>
+<span class="kw">for</span> (i = <span class="nm">0</span>; i &lt; N; i++)
+    <span class="kw">for</span> (j = <span class="nm">0</span>; j &lt; M; j++)        <span class="cm">// j es SHARED por defecto: ¡bug!</span>
+        a[i][j] = ...;</code></pre>
+    <p>Solución: <code>private(j)</code> en el pragma, o declarar <code>j</code> dentro del bucle.</p>
+  </section>
+
+  <section>
+    <h2>Ejemplo completo y comentado: suma y producto escalar</h2>
 <pre><code><span class="pr">#include</span> <span class="st">&lt;stdio.h&gt;</span>
 <span class="pr">#include</span> <span class="st">&lt;omp.h&gt;</span>
 
 <span class="kw">int</span> main() {
     <span class="kw">const int</span> N = <span class="nm">1000000</span>;
-    <span class="kw">double</span> a[N], b[N], c[N];
-    <span class="kw">double</span> suma = <span class="nm">0.0</span>;
+    <span class="kw">double</span> *a = malloc(N * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+    <span class="kw">double</span> *b = malloc(N * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+    <span class="kw">double</span> *c = malloc(N * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+    <span class="kw">double</span> dot = <span class="nm">0.0</span>;
 
-    <span class="cm">// inicialización en paralelo</span>
+    <span class="cm">// 1. inicialización en paralelo (cada hilo escribe en sus propias posiciones)</span>
     <span class="pr">#pragma omp parallel for</span>
     <span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; N; i++) {
         a[i] = i * <span class="nm">1.0</span>;
@@ -285,19 +740,153 @@ recorrer(raiz);</code></pre>
 
     <span class="kw">double</span> t0 = omp_get_wtime();
 
-    <span class="cm">// cómputo principal: c = a + b y suma global</span>
-    <span class="pr">#pragma omp parallel for</span> reduction(+: suma)
+    <span class="cm">// 2. cómputo principal: c = a + b, y producto escalar a·b</span>
+    <span class="cm">//    Dos cosas a la vez: suma vectorial (sin contención) y reducción.</span>
+    <span class="pr">#pragma omp parallel for</span> reduction(+: dot)
     <span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; N; i++) {
-        c[i] = a[i] + b[i];
-        suma += c[i];
+        c[i] = a[i] + b[i];        <span class="cm">// shared, sin conflicto: cada i va a sitio distinto</span>
+        dot += a[i] * b[i];        <span class="cm">// reducción: cada hilo acumula local, se combinan al final</span>
     }
 
     <span class="kw">double</span> t1 = omp_get_wtime();
-    printf(<span class="st">"suma = %.2f, tiempo = %.4f s\n"</span>, suma, t1 - t0);
+    printf(<span class="st">"dot = %.2f, t = %.4f s\n"</span>, dot, t1 - t0);
+
+    free(a); free(b); free(c);
     <span class="kw">return</span> <span class="nm">0</span>;
 }</code></pre>
 
-    <p>Para compilar: <code>gcc -fopenmp -O2 prog.c -o prog</code>. Para ejecutar con 8 hilos: <code>OMP_NUM_THREADS=8 ./prog</code>.</p>
+    <p>Para compilar y lanzar con 8 hilos:</p>
+<pre><code>$ gcc -fopenmp -O3 prog.c -o prog
+$ OMP_NUM_THREADS=8 ./prog</code></pre>
+  </section>
+
+  <section>
+    <h2>Guía resuelta: ejercicios de la Semana 3</h2>
+    <p>Los ejercicios oficiales se basan en cuatro ficheros del paquete <code>ejemplosOpenMP.tar.gz</code> (directorio <code>CCCC/</code>). Aquí los resolvemos razonando, no solo dando la respuesta.</p>
+
+    <h3>Ejercicio 1 · <code>ejemplo_for.c</code> — comparar schedules</h3>
+    <p><strong>Enunciado:</strong> probar distintos <code>schedule</code> (estático/dinámico, sin tamaño/tamaño = 2) y razonar el comportamiento observado.</p>
+
+    <p><strong>Qué probar (cuatro variantes):</strong></p>
+<pre><code><span class="pr">#pragma omp parallel for</span> schedule(<span class="kw">static</span>)
+<span class="pr">#pragma omp parallel for</span> schedule(<span class="kw">static</span>, <span class="nm">2</span>)
+<span class="pr">#pragma omp parallel for</span> schedule(<span class="kw">dynamic</span>)
+<span class="pr">#pragma omp parallel for</span> schedule(<span class="kw">dynamic</span>, <span class="nm">2</span>)</code></pre>
+
+    <p>Sugerencia: que el bucle imprima <code>i</code> y <code>omp_get_thread_num()</code>, así ves a qué hilo va cada iteración.</p>
+
+    <p><strong>Comportamiento esperado:</strong></p>
+    <ul>
+      <li><code>static</code> (sin tamaño) con <em>P</em> hilos y <em>N</em> iteraciones: cada hilo coge un bloque contiguo de aproximadamente <code>N/P</code> iteraciones. Hilo 0 → 0..N/P−1, etc. Reparto fijo desde el inicio.</li>
+      <li><code>static, 2</code>: trozos de tamaño 2, en round-robin. Hilo 0 → {0,1}, hilo 1 → {2,3}, hilo 2 → {4,5}, hilo 3 → {6,7}, hilo 0 → {8,9}…</li>
+      <li><code>dynamic</code> (sin tamaño = <code>dynamic, 1</code>): cada hilo coge una iteración del pool cuando acaba. El orden de impresión es no determinista entre ejecuciones porque depende del scheduler del SO.</li>
+      <li><code>dynamic, 2</code>: igual pero por parejas. Menos overhead que <code>dynamic, 1</code>, mismo carácter no determinista.</li>
+    </ul>
+
+    <p><strong>Razonamiento:</strong> con iteraciones de coste uniforme, <code>static</code> es el más rápido porque no tiene overhead de gestión. <code>dynamic</code> es útil cuando las iteraciones tienen costes muy distintos: si la iteración 0 cuesta lo mismo que la 100, ningún hilo queda esperando. El precio es un coste de coordinación: cada vez que un hilo pide trabajo, hay sincronización con el pool. Con <code>chunk = 2</code> reduces ese coste a la mitad respecto a <code>dynamic, 1</code>, a cambio de balance ligeramente peor.</p>
+
+    <h3>Ejercicio 2 · <code>ejemplo_sections.c</code> — combinar directivas</h3>
+    <p><strong>Enunciado:</strong> agrupar las directivas <code>parallel</code> y <code>sections</code> en una única.</p>
+
+    <p><strong>Solución:</strong> sustituir</p>
+<pre><code><span class="pr">#pragma omp parallel</span>
+{
+    <span class="pr">#pragma omp sections</span>
+    {
+        <span class="pr">#pragma omp section</span>
+        bloque_A();
+        <span class="pr">#pragma omp section</span>
+        bloque_B();
+    }
+}</code></pre>
+    <p>por la forma combinada:</p>
+<pre><code><span class="pr">#pragma omp parallel sections</span>
+{
+    <span class="pr">#pragma omp section</span>
+    bloque_A();
+    <span class="pr">#pragma omp section</span>
+    bloque_B();
+}</code></pre>
+    <p><strong>Razonamiento:</strong> es equivalente funcionalmente. La forma combinada es preferida cuando dentro de la región paralela <em>solo</em> hay las <code>sections</code>; ahorra un nivel de anidamiento. Limitación: la combinada no admite <code>nowait</code> (la barrera del <code>parallel</code> ya estaría allí de todas formas).</p>
+
+    <h3>Ejercicio 3 · comparar <code>sections</code>, <code>single</code> y <code>critical</code></h3>
+    <p><strong>Enunciado:</strong> razonar el comportamiento de los tres.</p>
+
+    <table>
+      <tr><th>Construcción</th><th>Cuántos hilos lo ejecutan</th><th>En paralelo entre sí</th><th>Barrera al final</th></tr>
+      <tr><td><code>sections</code></td><td>Tantos hilos como secciones (uno por sección)</td><td>Sí, distintas secciones en paralelo</td><td>Sí (salvo <code>nowait</code>)</td></tr>
+      <tr><td><code>single</code></td><td>Uno solo (el primero que llega)</td><td>—</td><td>Sí (salvo <code>nowait</code>)</td></tr>
+      <tr><td><code>critical</code></td><td>Todos, pero <strong>uno cada vez</strong></td><td>No, serializa</td><td>No</td></tr>
+    </table>
+
+    <p><strong>Cuándo se usa cada uno:</strong></p>
+    <ul>
+      <li><code>sections</code>: <em>distintos</em> trabajos que se pueden hacer en paralelo. Reparto estático: si tienes 3 secciones y 8 hilos, 5 se quedan parados.</li>
+      <li><code>single</code>: un único trabajo que debe hacer un hilo cualquiera. Los demás esperan en la barrera al final.</li>
+      <li><code>critical</code>: <em>el mismo</em> trabajo lo hacen todos, pero con exclusión mutua. Útil para acumular en una variable compartida o cualquier sección que no pueda ejecutarse simultáneamente.</li>
+    </ul>
+
+    <p>Confusión típica: «si quiero que algo solo lo haga un hilo, ¿single o critical?». Respuesta: <strong>single</strong>. <code>critical</code> hace que todos los hilos pasen, uno a uno; <code>single</code> hace que uno solo entre y los demás se salten el bloque.</p>
+
+    <h3>Ejercicio 4 · Fibonacci paralelo <em>sin tareas</em></h3>
+    <p><strong>Enunciado:</strong> indicar cómo paralelizar <code>fib(n) = fib(n-1) + fib(n-2)</code> sin usar <code>#pragma omp task</code>.</p>
+
+    <p><strong>Idea:</strong> las dos llamadas recursivas son independientes (no hay dependencias entre ellas hasta sumarlas). El primer nivel de la recursión expone dos trabajos paralelos. Eso encaja perfectamente en <code>sections</code>:</p>
+
+<pre><code><span class="kw">long</span> fib(<span class="kw">int</span> n) {
+    <span class="kw">long</span> a, b;
+    <span class="kw">if</span> (n &lt; <span class="nm">2</span>) <span class="kw">return</span> n;
+
+    <span class="pr">#pragma omp parallel sections</span>     <span class="cm">// dos secciones en paralelo</span>
+    {
+        <span class="pr">#pragma omp section</span>
+        a = fib(n - <span class="nm">1</span>);              <span class="cm">// llamada secuencial dentro</span>
+
+        <span class="pr">#pragma omp section</span>
+        b = fib(n - <span class="nm">2</span>);
+    }
+    <span class="kw">return</span> a + b;
+}</code></pre>
+
+    <p><strong>Razonamiento crítico:</strong> esta solución <em>funciona</em>, pero tiene dos problemas serios:</p>
+    <ol>
+      <li><strong>Solo el primer nivel se paraleliza</strong>. Las llamadas internas <code>fib(n-1)</code> y <code>fib(n-2)</code> son secuenciales. Si quisieras paralelismo más profundo, necesitarías habilitar paralelismo anidado (<code>omp_set_nested(1)</code>) y aceptar que cada nivel crea un nuevo equipo de hilos —explosión combinatoria de hilos.</li>
+      <li><strong>Desbalance</strong>: <code>fib(n-1)</code> es mucho más costoso que <code>fib(n-2)</code> (de hecho la diferencia es exponencial). Una sección tarda muchísimo más que la otra; un hilo se queda esperando.</li>
+    </ol>
+
+    <p>Por eso las <em>tareas</em> son la respuesta natural: cada nodo del árbol de recursión se convierte en una tarea, el runtime las planifica sobre un equipo fijo de hilos, sin anidamiento explosivo, con balanceo dinámico. Esta es la motivación canónica del modelo de tareas.</p>
+  </section>
+
+  <section>
+    <h2>Errores frecuentes (y cómo detectarlos)</h2>
+    <table>
+      <tr><th>Síntoma</th><th>Causa probable</th><th>Diagnóstico</th></tr>
+      <tr>
+        <td>Resultado cambia entre ejecuciones</td>
+        <td>Condición de carrera: variable shared que debería ser private o reduction</td>
+        <td>Ejecuta con 1 hilo (<code>OMP_NUM_THREADS=1</code>): si funciona, es paralelismo. Revisa la cláusula de cada variable.</td>
+      </tr>
+      <tr>
+        <td>Versión paralela más lenta que la serie</td>
+        <td>Granularidad demasiado fina o false sharing</td>
+        <td>Mide el tamaño de la región; agrupa más trabajo por hilo. Si la región es grande, busca false sharing.</td>
+      </tr>
+      <tr>
+        <td>El programa se cuelga</td>
+        <td>Llave no liberada o barrera dentro de <code>if</code></td>
+        <td>Por cada <code>omp_set_lock</code> debe haber un <code>unset_lock</code> en <em>todas</em> las salidas del bloque. Las barreras deben encontrarlas <em>todos</em> los hilos.</td>
+      </tr>
+      <tr>
+        <td>Las salidas se mezclan ilegiblemente</td>
+        <td>Funcionamiento normal: varios hilos haciendo <code>printf</code></td>
+        <td>Si te molesta, mete los <code>printf</code> en <code>#pragma omp critical</code> o <code>single</code>.</td>
+      </tr>
+      <tr>
+        <td>Mismos números aleatorios en todos los hilos</td>
+        <td>Uso de <code>rand()</code> en lugar de <code>rand_r()</code></td>
+        <td>Cambia a <code>rand_r(&amp;semilla)</code> con <code>semilla</code> privada por hilo.</td>
+      </tr>
+    </table>
   </section>
 
   <div class="retrieval-section">
@@ -307,7 +896,7 @@ recorrer(raiz);</code></pre>
     <div class="flashcards">
       <div class="flashcard">
         <div class="question">¿Qué diferencia hay entre <code>#pragma omp parallel</code> y <code>#pragma omp parallel for</code>?</div>
-        <div class="answer"><code>parallel</code> solo crea el equipo de hilos: todos ejecutan el bloque entero. <code>parallel for</code> es la combinación abreviada que además reparte las iteraciones del bucle siguiente entre esos hilos.</div>
+        <div class="answer"><code>parallel</code> solo crea el equipo de hilos: todos ejecutan el bloque <em>entero</em>. <code>parallel for</code> es la combinación abreviada que además reparte las iteraciones del bucle siguiente entre esos hilos. Sin el <code>for</code>, todos los hilos ejecutarían el bucle completo independientemente.</div>
       </div>
       <div class="flashcard">
         <div class="question">¿Cuándo usas <code>private</code> y cuándo <code>firstprivate</code>?</div>
@@ -315,23 +904,35 @@ recorrer(raiz);</code></pre>
       </div>
       <div class="flashcard">
         <div class="question">¿Cuál es la trampa de usar <code>critical</code> dentro de un bucle paralelo?</div>
-        <div class="answer">Que serializa los hilos: solo uno puede estar dentro de la sección crítica a la vez. Si la sección crítica es el grueso del trabajo, el paralelismo desaparece. Usa <code>reduction</code> o <code>atomic</code> si la operación es simple.</div>
+        <div class="answer">Que serializa los hilos: solo uno puede estar dentro de la sección crítica a la vez. Si la sección crítica es el grueso del trabajo, el paralelismo desaparece. Usa <code>reduction</code> si es una agregación, <code>atomic</code> si es una operación simple, o reparte el trabajo de modo que no haga falta sincronizar.</div>
       </div>
       <div class="flashcard">
         <div class="question">¿Para qué sirve <code>nowait</code>?</div>
-        <div class="answer">Elimina la barrera implícita al final de un <code>for</code>, <code>sections</code> o <code>single</code>. Sirve cuando la directiva siguiente no depende de los resultados de la anterior: ahorras el coste de la sincronización.</div>
+        <div class="answer">Elimina la barrera implícita al final de un <code>for</code>, <code>sections</code> o <code>single</code>. Sirve cuando la directiva siguiente no depende de los resultados de la anterior: ahorras el coste de la sincronización. Sin <code>nowait</code>, todos los hilos esperan al más lento.</div>
       </div>
       <div class="flashcard">
         <div class="question">Tienes un bucle donde unas iteraciones tardan diez veces más que otras. ¿Qué <code>schedule</code> es razonable?</div>
-        <div class="answer"><code>dynamic</code> o <code>guided</code>. <code>static</code> repartiría los chunks a priori y los hilos con iteraciones largas terminarían tarde mientras otros esperan. <code>guided</code> suele ser un buen punto medio: empieza con chunks grandes y los reduce.</div>
+        <div class="answer"><code>dynamic</code> o <code>guided</code>. <code>static</code> repartiría los chunks a priori y los hilos con iteraciones largas terminarían tarde mientras otros esperan. <code>guided</code> suele ser un buen punto medio: empieza con chunks grandes (amortiza el overhead) y los reduce (mejora el balanceo final).</div>
       </div>
       <div class="flashcard">
         <div class="question">¿Qué hace <code>reduction(max: m)</code> en un bucle?</div>
-        <div class="answer">Cada hilo tiene su copia local de <code>m</code> inicializada al valor más pequeño posible. Calcula su máximo local. Al final, OpenMP combina todas las copias quedándose con el máximo global y lo escribe en <code>m</code>. Todo sin sincronización explícita.</div>
+        <div class="answer">Cada hilo tiene su copia local de <code>m</code> inicializada al valor más pequeño posible. Calcula su máximo local. Al final, OpenMP combina todas las copias quedándose con el máximo global y lo escribe en <code>m</code>. Todo sin sincronización explícita por iteración.</div>
       </div>
       <div class="flashcard">
         <div class="question">¿Por qué <code>default(none)</code> es una buena práctica?</div>
-        <div class="answer">Obliga al compilador a fallar si se te olvida declarar el sharing de cualquier variable. En programas grandes evita errores difíciles de detectar: una variable que pensabas privada y resulta compartida, o viceversa.</div>
+        <div class="answer">Obliga al compilador a fallar si se te olvida declarar el alcance de cualquier variable. En programas grandes evita errores difíciles de detectar: una variable que pensabas privada y resulta compartida, o viceversa.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Para qué sirve <code>#pragma omp single nowait</code> dentro de un <code>parallel</code> que genera tareas?</div>
+        <div class="answer">Para que un solo hilo recorra la estructura generando tareas (las demás generaciones serían duplicados), pero los otros hilos no esperen en la barrera del <code>single</code> y empiecen a coger tareas del pool inmediatamente.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Diferencia entre tarea <em>tied</em> y <em>untied</em>.</div>
+        <div class="answer">Tied (por defecto): el hilo que empieza la tarea es el que la termina, aunque pueda hacer pausas para atender otras tareas. Untied: cualquier hilo del equipo puede retomar la tarea desde donde otro la dejó. Untied da más flexibilidad al scheduler pero rompe con <code>threadprivate</code> y <code>omp_get_thread_num()</code>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué Fibonacci con <code>sections</code> escala mal y con <code>task</code> escala bien?</div>
+        <div class="answer">Con <code>sections</code> solo paralelizas el nivel superior; las llamadas internas son secuenciales y, además, las dos ramas tienen costes muy distintos (desbalance). Con <code>task</code>, todas las llamadas recursivas se convierten en tareas que el runtime planifica dinámicamente sobre un equipo fijo de hilos: aprovechas el paralelismo de todo el árbol y compensas el desbalance.</div>
       </div>
       <div class="flashcard">
         <div class="question">Repaso de la sesión 2: ¿qué problema fundamental de la memoria compartida resuelve <code>critical</code>?</div>
@@ -340,6 +941,10 @@ recorrer(raiz);</code></pre>
       <div class="flashcard">
         <div class="question">¿Qué imprime este código con cuatro hilos?<br><code>#pragma omp parallel<br>printf("hola\n");</code></div>
         <div class="answer">Cuatro veces «hola», sin orden garantizado. Cada hilo ejecuta el <code>printf</code> entero. Si quieres que solo uno escriba, encierra el <code>printf</code> en <code>#pragma omp single</code>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">En un bucle <code>#pragma omp parallel for</code> con un bucle <code>for (j=…)</code> anidado, ¿hace falta declarar algo sobre <code>j</code>?</div>
+        <div class="answer">Sí: declarar <code>private(j)</code>, o mejor declarar <code>j</code> dentro del bucle exterior (con <code>for (int j…)</code>). La variable de iteración del bucle anotado con el pragma es privada automáticamente, pero las de los bucles internos no.</div>
       </div>
     </div>
   </div>

@@ -19,75 +19,112 @@
   </header>
 
   <section>
-    <h2>Filosofía SPMD</h2>
-    <p>Casi todos los programas MPI siguen el modelo <strong>SPMD</strong> (Single Program, Multiple Data): un único ejecutable, lanzado en múltiples copias (procesos), donde cada proceso decide qué hacer mirando su identificador. No hay maestro «físico» como en OpenMP: todos los procesos son iguales y el rol de cada uno lo determina el código.</p>
+    <h2>De PVM al estándar MPI</h2>
+    <p>Antes de MPI, cada fabricante tenía su propia librería de paso de mensajes —incompatibles entre sí—. <strong>PVM</strong> (Parallel Virtual Machine, ~1993) fue el primer intento serio de portabilidad. Poco después, el <strong>MPI Forum</strong>, con participantes de unas 40 organizaciones, consensúa una <em>especificación</em> publicada en <strong>mayo de 1994</strong> y actualizada en junio de 1995.</p>
 
-    <div class="diagram">
-      <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Modelo SPMD en MPI">
-        <style>
-          .b { fill: #fff; stroke: #1a1a1a; stroke-width: 1.5; }
-          .b-cool { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.5; }
-          .t { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
-          .ts { font: 500 9px 'JetBrains Mono', monospace; fill: #2a5f7f; text-anchor: middle; }
-          .ti { font: italic 500 10px 'Fraunces', serif; fill: #3d3d3d; text-anchor: middle; }
-          .arr { stroke: #c5410f; stroke-width: 1.5; fill: none; marker-end: url(#arc); }
-        </style>
-        <defs>
-          <marker id="arc" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
-          </marker>
-        </defs>
+    <p>MPI ofrece:</p>
+    <ul>
+      <li><strong>Estandarización</strong>: una API documentada y estable.</li>
+      <li><strong>Portabilidad</strong>: el mismo código compila en multiprocesadores de memoria compartida, clusters, multicomputadores de paso de mensajes y sistemas heterogéneos.</li>
+      <li><strong>Buenas prestaciones</strong> cuando hay implementación nativa eficiente.</li>
+      <li><strong>Amplia funcionalidad</strong>: del orden de 140 funciones cubriendo desde el «hola mundo» hasta topologías virtuales y E/S paralela.</li>
+      <li><strong>Implementaciones</strong> propietarias y libres: <code>mpich</code>, <code>LAM/MPI</code>, <code>OpenMPI</code>. En el laboratorio 2.1 está instalada OpenMPI.</li>
+    </ul>
 
-        <!-- Un ejecutable -->
-        <rect class="b" x="280" y="20" width="160" height="40" rx="3"/>
-        <text class="t" x="360" y="42">prog.c → mpicc → ./prog</text>
-        <text class="ts" x="360" y="55">un único binario</text>
-
-        <!-- mpirun -->
-        <text x="360" y="80" class="ti">mpirun -np 4 ./prog</text>
-        <path class="arr" d="M 360 85 L 120 110"/>
-        <path class="arr" d="M 360 85 L 280 110"/>
-        <path class="arr" d="M 360 85 L 440 110"/>
-        <path class="arr" d="M 360 85 L 600 110"/>
-
-        <!-- Procesos -->
-        <g>
-          <rect class="b-cool" x="60" y="110" width="120" height="80" rx="3"/>
-          <text class="ts" x="120" y="125">rank = 0</text>
-          <text class="ti" x="120" y="145">"yo soy el</text>
-          <text class="ti" x="120" y="160">maestro lógico"</text>
-          <text class="ts" x="120" y="180">memoria propia</text>
-        </g>
-        <g>
-          <rect class="b-cool" x="220" y="110" width="120" height="80" rx="3"/>
-          <text class="ts" x="280" y="125">rank = 1</text>
-          <text class="ti" x="280" y="145">"trabajador"</text>
-          <text class="ti" x="280" y="160">caso else</text>
-          <text class="ts" x="280" y="180">memoria propia</text>
-        </g>
-        <g>
-          <rect class="b-cool" x="380" y="110" width="120" height="80" rx="3"/>
-          <text class="ts" x="440" y="125">rank = 2</text>
-          <text class="ti" x="440" y="145">"trabajador"</text>
-          <text class="ti" x="440" y="160">caso else</text>
-          <text class="ts" x="440" y="180">memoria propia</text>
-        </g>
-        <g>
-          <rect class="b-cool" x="540" y="110" width="120" height="80" rx="3"/>
-          <text class="ts" x="600" y="125">rank = 3</text>
-          <text class="ti" x="600" y="145">"trabajador"</text>
-          <text class="ti" x="600" y="160">caso else</text>
-          <text class="ts" x="600" y="180">memoria propia</text>
-        </g>
-
-        <text x="360" y="210" class="t" style="font-style: italic; font-size: 10px; fill: #3d3d3d;">El mismo código + un <code>if (rank == 0)</code> ⟶ comportamientos distintos por proceso.</text>
-      </svg>
-      <p class="caption">SPMD: una sola fuente, múltiples procesos, cada uno con su propio <em>rank</em> y memoria privada.</p>
+    <div class="learning-hint">
+      MPI es una <em>especificación</em>, no una librería. Cuando instalas OpenMPI, mpich o Intel MPI lo que cambia es la implementación; la API es la misma. Eso significa que tu código funcionará igual en todas, salvo detalles de cómo se lanzan los procesos.
     </div>
   </section>
 
   <section>
-    <h2>Cuatro funciones obligatorias (el «hola mundo»)</h2>
+    <h2>Filosofía SPMD</h2>
+    <p>Casi todos los programas MPI siguen el modelo <strong>SPMD</strong> (Single Program, Multiple Data): un único ejecutable, lanzado en múltiples copias (procesos), donde cada proceso decide qué hacer mirando su identificador. No hay maestro «físico» como en OpenMP: todos los procesos son iguales y el rol de cada uno lo determina el código.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 760 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Modelo SPMD en MPI">
+        <style>
+          .sp-box  { fill: #fff; stroke: #1a1a1a; stroke-width: 1.5; }
+          .sp-cool { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.5; }
+          .sp-t    { font: 600 12px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .sp-m    { font: 500 11px 'JetBrains Mono', monospace; fill: #2a5f7f; text-anchor: middle; }
+          .sp-i    { font: italic 500 11px 'Fraunces', serif; fill: #3d3d3d; text-anchor: middle; }
+          .sp-c    { font: italic 500 10px 'Inter Tight', sans-serif; fill: #7a7468; text-anchor: middle; }
+          .sp-a    { stroke: #c5410f; stroke-width: 1.5; fill: none; marker-end: url(#sp-h); }
+        </style>
+        <defs>
+          <marker id="sp-h" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <rect class="sp-box" x="290" y="15" width="180" height="48" rx="3"/>
+        <text class="sp-m" x="380" y="35">prog.c → mpicc → ./prog</text>
+        <text class="sp-c" x="380" y="52">un único binario</text>
+
+        <text x="380" y="82" class="sp-i">mpirun -np 4 ./prog</text>
+
+        <path class="sp-a" d="M 380 90 L 130 120"/>
+        <path class="sp-a" d="M 380 90 L 290 120"/>
+        <path class="sp-a" d="M 380 90 L 450 120"/>
+        <path class="sp-a" d="M 380 90 L 610 120"/>
+
+        <g>
+          <rect class="sp-cool" x="60"  y="125" width="140" height="88" rx="3"/>
+          <text class="sp-m" x="130" y="142">rank = 0</text>
+          <text class="sp-i" x="130" y="162">"maestro lógico"</text>
+          <text class="sp-i" x="130" y="178">rama if (rank == 0)</text>
+          <text class="sp-c" x="130" y="200">memoria propia</text>
+        </g>
+        <g>
+          <rect class="sp-cool" x="220" y="125" width="140" height="88" rx="3"/>
+          <text class="sp-m" x="290" y="142">rank = 1</text>
+          <text class="sp-i" x="290" y="162">trabajador</text>
+          <text class="sp-i" x="290" y="178">rama else</text>
+          <text class="sp-c" x="290" y="200">memoria propia</text>
+        </g>
+        <g>
+          <rect class="sp-cool" x="380" y="125" width="140" height="88" rx="3"/>
+          <text class="sp-m" x="450" y="142">rank = 2</text>
+          <text class="sp-i" x="450" y="162">trabajador</text>
+          <text class="sp-i" x="450" y="178">rama else</text>
+          <text class="sp-c" x="450" y="200">memoria propia</text>
+        </g>
+        <g>
+          <rect class="sp-cool" x="540" y="125" width="140" height="88" rx="3"/>
+          <text class="sp-m" x="610" y="142">rank = 3</text>
+          <text class="sp-i" x="610" y="162">trabajador</text>
+          <text class="sp-i" x="610" y="178">rama else</text>
+          <text class="sp-c" x="610" y="200">memoria propia</text>
+        </g>
+      </svg>
+      <p class="caption">SPMD: una sola fuente, múltiples procesos, cada uno con su propio <em>rank</em> y memoria privada. El maestro lógico suele ser <code>rank == 0</code>, pero es una convención del programa, no de MPI.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Compilación y ejecución</h2>
+    <p>La compilación se hace con un <em>wrapper</em> del compilador C que añade las cabeceras y bibliotecas MPI:</p>
+
+<pre><code>$ mpicc programa.c -o programa            <span class="cm"># wrapper de gcc/clang</span>
+$ mpiicc programa.c -o programa           <span class="cm"># si usas Intel ICC</span>
+$ mpic++ programa.cpp -o programa         <span class="cm"># para C++</span></code></pre>
+
+    <p>El lanzamiento crea los procesos:</p>
+
+<pre><code>$ mpirun -np 4 ./programa                 <span class="cm"># 4 procesos, todos en el host actual</span>
+$ mpirun -np 8 -hostfile hostfile.txt ./programa</code></pre>
+
+    <p>El fichero <code>hostfile.txt</code> indica nodos del cluster y cuántos <em>slots</em> (procesos) admite cada uno. En un solo nodo basta:</p>
+<pre><code>localhost slots=6</code></pre>
+    <p>Con eso, <code>mpirun</code> permite lanzar hasta 6 procesos en local. Si quieres saltarte la limitación, las versiones recientes de OpenMPI admiten el flag <code>--oversubscribe</code>, menos formal pero útil para pruebas.</p>
+
+    <div class="learning-hint">
+      Importante: <code>-np N</code> indica cuántos <em>procesos</em> arrancar, no cuántos cores hay. Puedes lanzar más procesos que cores —cada proceso es independiente—, pero no escalará: competirán por la CPU. El rendimiento real exige <em>un proceso por core</em> aproximadamente.
+    </div>
+  </section>
+
+  <section>
+    <h2>Las cuatro funciones obligatorias (esqueleto mínimo)</h2>
 
 <pre><code><span class="pr">#include</span> <span class="st">&lt;mpi.h&gt;</span>
 <span class="pr">#include</span> <span class="st">&lt;stdio.h&gt;</span>
@@ -105,63 +142,89 @@
     <span class="kw">return</span> <span class="nm">0</span>;
 }</code></pre>
 
-    <p>Para compilar: <code>mpicc hola.c -o hola</code>. Para lanzar 8 procesos: <code>mpirun -np 8 ./hola</code>.</p>
+    <p>Forma general de las funciones MPI: <code>error = MPI_Nombre(parámetros)</code>. Todas devuelven un código de error (<code>MPI_SUCCESS</code> en caso correcto), aunque normalmente se ignora.</p>
 
-    <p>El parámetro <code>MPI_COMM_WORLD</code> es el <strong>comunicador por defecto</strong>: el grupo de todos los procesos arrancados con <code>mpirun</code>. Puedes crear comunicadores más pequeños para subconjuntos, pero <code>MPI_COMM_WORLD</code> basta para casi todo.</p>
+    <p>El parámetro <code>MPI_COMM_WORLD</code> es el <strong>comunicador por defecto</strong>: el grupo de todos los procesos arrancados con <code>mpirun</code>. Puedes crear comunicadores más pequeños para subconjuntos (lo veremos abajo), pero para el 90 % del código basta con <code>MPI_COMM_WORLD</code>.</p>
+  </section>
+
+  <section>
+    <h2>Tipos de datos MPI</h2>
+    <p>Cada mensaje declara explícitamente el tipo de sus elementos. Eso permite a MPI hacer conversiones cuando los procesos están en máquinas con representaciones binarias distintas (heterogéneas).</p>
+
+    <table>
+      <tr><th>Tipo MPI</th><th>Equivalente C</th></tr>
+      <tr><td><code>MPI_CHAR</code></td><td><code>signed char</code></td></tr>
+      <tr><td><code>MPI_SHORT</code></td><td><code>signed short int</code></td></tr>
+      <tr><td><code>MPI_INT</code></td><td><code>signed int</code></td></tr>
+      <tr><td><code>MPI_LONG</code></td><td><code>signed long int</code></td></tr>
+      <tr><td><code>MPI_UNSIGNED_CHAR</code></td><td><code>unsigned char</code></td></tr>
+      <tr><td><code>MPI_UNSIGNED_SHORT</code></td><td><code>unsigned short int</code></td></tr>
+      <tr><td><code>MPI_UNSIGNED</code></td><td><code>unsigned int</code></td></tr>
+      <tr><td><code>MPI_UNSIGNED_LONG</code></td><td><code>unsigned long int</code></td></tr>
+      <tr><td><code>MPI_FLOAT</code></td><td><code>float</code></td></tr>
+      <tr><td><code>MPI_DOUBLE</code></td><td><code>double</code></td></tr>
+      <tr><td><code>MPI_LONG_DOUBLE</code></td><td><code>long double</code></td></tr>
+      <tr><td><code>MPI_BYTE</code></td><td>byte sin interpretación</td></tr>
+      <tr><td><code>MPI_PACKED</code></td><td>datos serializados con <code>MPI_Pack</code></td></tr>
+    </table>
+
+    <p>Además, el programador puede crear <strong>tipos derivados</strong> para describir estructuras complejas (ver más abajo).</p>
   </section>
 
   <section>
     <h2>Comunicación punto a punto</h2>
-    <p>La más básica: un proceso envía, otro recibe.</p>
+    <p>La operación más básica: un proceso envía, otro recibe.</p>
 
 <pre><code><span class="cm">// Emisor</span>
-<span class="fn">MPI_Send</span>(buf, count, datatype, dest, tag, comm);
+<span class="fn">MPI_Send</span>(<span class="kw">void</span> *buf, <span class="kw">int</span> count, MPI_Datatype tipo,
+         <span class="kw">int</span> destino, <span class="kw">int</span> tag, MPI_Comm comm);
 
 <span class="cm">// Receptor</span>
-<span class="fn">MPI_Recv</span>(buf, count, datatype, source, tag, comm, &amp;status);</code></pre>
+<span class="fn">MPI_Recv</span>(<span class="kw">void</span> *buf, <span class="kw">int</span> count, MPI_Datatype tipo,
+         <span class="kw">int</span> origen, <span class="kw">int</span> tag, MPI_Comm comm, MPI_Status *status);</code></pre>
 
     <p>Los parámetros:</p>
     <ul>
-      <li><strong>buf</strong>: dirección del buffer (puntero a los datos).</li>
+      <li><strong>buf</strong>: dirección del buffer (puntero a los datos a enviar/recibir).</li>
       <li><strong>count</strong>: cuántos elementos.</li>
-      <li><strong>datatype</strong>: tipo MPI (<code>MPI_INT</code>, <code>MPI_DOUBLE</code>, <code>MPI_CHAR</code>...).</li>
-      <li><strong>dest / source</strong>: rank del otro extremo. En la recepción puedes usar <code>MPI_ANY_SOURCE</code> si no te importa.</li>
-      <li><strong>tag</strong>: etiqueta entera para distinguir mensajes. <code>MPI_ANY_TAG</code> acepta cualquiera.</li>
+      <li><strong>tipo</strong>: tipo MPI de cada elemento.</li>
+      <li><strong>destino / origen</strong>: rank del otro extremo. En la recepción puedes usar <code>MPI_ANY_SOURCE</code> si no te importa quién envió.</li>
+      <li><strong>tag</strong>: etiqueta entera para distinguir mensajes entre los mismos pares. <code>MPI_ANY_TAG</code> acepta cualquiera.</li>
       <li><strong>comm</strong>: comunicador (normalmente <code>MPI_COMM_WORLD</code>).</li>
-      <li><strong>status</strong>: información del mensaje recibido (origen real, tamaño...). Si no la necesitas, <code>MPI_STATUS_IGNORE</code>.</li>
+      <li><strong>status</strong>: en <code>Recv</code>, información del mensaje recibido (origen real, tamaño...). Si no la necesitas, <code>MPI_STATUS_IGNORE</code>.</li>
     </ul>
 
-    <h3>Las cuatro variantes de envío</h3>
-    <p>Esta es una de las preguntas frecuentes de examen. Las cuatro modalidades cambian <strong>qué tiene que pasar para que <code>send</code> retorne</strong>:</p>
+    <h3>Las cuatro variantes de envío bloqueante</h3>
+    <p>Pregunta clásica de examen. Las cuatro modalidades cambian <strong>qué tiene que pasar para que la llamada de envío retorne</strong>; todas las versiones de <code>recv</code> retornan cuando el mensaje se ha recibido.</p>
 
     <table>
-      <tr><th>Función</th><th>Retorna cuando...</th><th>Pros / contras</th></tr>
+      <tr><th>Función</th><th>Retorna cuando…</th><th>Pros / contras</th></tr>
       <tr>
-        <td><code>MPI_Ssend</code></td>
+        <td><code>MPI_Ssend</code> (síncrono)</td>
         <td>El receptor ha empezado a recibir</td>
-        <td>Sincronización máxima, sin buffer extra</td>
+        <td>Sincronización máxima, sin buffer extra. Sobrecarga por sincronización.</td>
       </tr>
       <tr>
-        <td><code>MPI_Bsend</code></td>
-        <td>Los datos se han copiado a un buffer de usuario</td>
-        <td>No espera al receptor, pero requiere reservar buffer con <code>MPI_Buffer_attach</code></td>
+        <td><code>MPI_Bsend</code> (con buffer)</td>
+        <td>Los datos se han copiado al buffer suministrado por el usuario</td>
+        <td>Acaba siempre, independiente del receptor. Elimina sobrecarga por sincronización. Requiere reservar buffer (<code>MPI_Buffer_attach</code>).</td>
       </tr>
       <tr>
-        <td><code>MPI_Rsend</code></td>
-        <td>Se asume que el <code>recv</code> ya está activo</td>
-        <td>Más rápido, pero peligroso: si no hay <code>recv</code> esperando, error</td>
-      </tr>
-      <tr>
-        <td><code>MPI_Send</code> <em>(estándar)</em></td>
+        <td><code>MPI_Send</code> (estándar)</td>
         <td>La implementación decide entre síncrono o con buffer</td>
-        <td>Cómodo, pero el comportamiento depende del tamaño del mensaje y de la implementación</td>
+        <td>Cómodo, pero comportamiento depende del tamaño del mensaje y de la implementación.</td>
+      </tr>
+      <tr>
+        <td><code>MPI_Rsend</code> (ready)</td>
+        <td>Se asume que el <code>recv</code> ya está activo</td>
+        <td>Reduce sobrecarga por sincronización. Si el <code>recv</code> no estaba listo, error: requiere estructura del programa que lo garantice.</td>
       </tr>
     </table>
   </section>
 
   <section>
     <h2>Comunicación no bloqueante</h2>
-    <p>Los <code>send</code>/<code>recv</code> anteriores son <strong>bloqueantes</strong>: la función no retorna hasta que el sistema garantiza que el buffer se puede reutilizar (o que el dato está). Para <em>solapar cómputo y comunicación</em>, MPI ofrece versiones no bloqueantes con prefijo <code>I</code>:</p>
+    <p>Los <code>send</code>/<code>recv</code> anteriores son <strong>bloqueantes</strong>: la función no retorna hasta que el sistema garantiza que el buffer se puede reutilizar (o que el dato ya llegó). Para <em>solapar cómputo y comunicación</em>, MPI ofrece versiones no bloqueantes con prefijo <code>I</code> (de <em>immediate</em>):</p>
 
 <pre><code><span class="fn">MPI_Request</span> req;
 <span class="fn">MPI_Irecv</span>(buf, n, MPI_DOUBLE, vecino, tag, MPI_COMM_WORLD, &amp;req);
@@ -174,237 +237,627 @@ calcular_otra_cosa();
 
     <p>Funciones útiles del lado no bloqueante:</p>
     <ul>
-      <li><code>MPI_Isend</code>, <code>MPI_Irecv</code>: arrancan la operación y devuelven un <code>MPI_Request</code>.</li>
-      <li><code>MPI_Wait(&amp;req)</code>: bloquea hasta que la operación se completa.</li>
-      <li><code>MPI_Test(&amp;req, &amp;flag)</code>: pregunta sin bloquear si ya está. Pone <code>flag</code> a <code>true</code> si sí.</li>
+      <li><code>MPI_Isend(buf, count, datatype, dest, tag, comm, &amp;request)</code> y <code>MPI_Irecv(...)</code>: arrancan la operación y devuelven un <code>MPI_Request</code>.</li>
+      <li><code>MPI_Wait(&amp;req, &amp;status)</code>: bloquea hasta que la operación se completa.</li>
+      <li><code>MPI_Test(&amp;req, &amp;flag, &amp;status)</code>: pregunta sin bloquear si ya está. Pone <code>flag</code> a no-cero si sí.</li>
       <li><code>MPI_Waitall</code>, <code>MPI_Waitany</code>, <code>MPI_Waitsome</code>: para varias <code>request</code> a la vez.</li>
     </ul>
 
     <div class="learning-hint">
-      Patrón muy típico: arrancar todos los <code>Irecv</code> al principio del paso, mandar <code>Isend</code> a continuación, hacer el cómputo del interior del dominio (que no necesita los datos de los vecinos), y finalmente <code>Waitall</code> antes de procesar los bordes. Es la base de los códigos de difusión y stencil.
+      Patrón muy típico en códigos de stencil/difusión: arrancar todos los <code>Irecv</code> al principio del paso, lanzar <code>Isend</code> a los vecinos, hacer el cómputo del <em>interior</em> del dominio (que no necesita los datos de los vecinos), y finalmente <code>Waitall</code> antes de procesar los bordes. Así la comunicación se solapa con el cómputo interior y a efectos prácticos «desaparece».
     </div>
   </section>
 
   <section>
-    <h2>Comunicación colectiva</h2>
-    <p>Cuando intervienen <em>todos</em> los procesos de un comunicador. Más cómoda y, casi siempre, más eficiente que ensamblar la misma operación con <code>Send</code>/<code>Recv</code> manuales.</p>
+    <h2>Comunicaciones colectivas</h2>
+    <p>Cuando intervienen <em>todos</em> los procesos de un comunicador. Más cómoda y, casi siempre, más eficiente que ensamblar la misma operación con <code>Send</code>/<code>Recv</code> manuales (la implementación usa árboles de comunicación log p).</p>
+
+    <p><strong>Regla de oro</strong>: una operación colectiva la deben invocar <em>todos</em> los procesos del comunicador, en el mismo orden. Si un proceso se la salta, el programa se cuelga.</p>
 
     <div class="diagram">
-      <svg viewBox="0 0 740 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Operaciones colectivas en MPI">
+      <svg viewBox="0 0 760 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Operaciones colectivas en MPI">
         <style>
-          .p { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.5; }
-          .pf { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.5; }
-          .a { stroke: #c5410f; stroke-width: 1.3; fill: none; marker-end: url(#a2); }
-          .nm { font: 600 9px 'JetBrains Mono', monospace; fill: #1a1a1a; text-anchor: middle; }
-          .h { font: 700 13px 'Fraunces', serif; fill: #1a1a1a; }
-          .d { font: 500 10px 'Inter Tight', sans-serif; fill: #3d3d3d; }
+          .cc-p   { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.3; }
+          .cc-pf  { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.3; }
+          .cc-nm  { font: 600 10px 'JetBrains Mono', monospace; fill: #1a1a1a; text-anchor: middle; }
+          .cc-h   { font: 700 13px 'Fraunces', serif; fill: #1a1a1a; }
+          .cc-op  { font: 600 11px 'JetBrains Mono', monospace; fill: #c5410f; text-anchor: middle; }
+          .cc-leg { font: 500 11px 'Inter Tight', sans-serif; fill: #3d3d3d; text-anchor: start; }
         </style>
-        <defs>
-          <marker id="a2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
-          </marker>
-        </defs>
 
         <!-- Broadcast -->
-        <text x="20" y="25" class="h">Broadcast: 1 → todos</text>
-        <rect class="pf" x="20" y="40" width="30" height="25"/><text class="nm" x="35" y="57">P0:A</text>
-        <rect class="p" x="55" y="40" width="30" height="25"/><text class="nm" x="70" y="57">P1:_</text>
-        <rect class="p" x="90" y="40" width="30" height="25"/><text class="nm" x="105" y="57">P2:_</text>
-        <rect class="p" x="125" y="40" width="30" height="25"/><text class="nm" x="140" y="57">P3:_</text>
-        <text x="170" y="55" class="d">→ MPI_Bcast →</text>
-        <rect class="pf" x="270" y="40" width="30" height="25"/><text class="nm" x="285" y="57">P0:A</text>
-        <rect class="pf" x="305" y="40" width="30" height="25"/><text class="nm" x="320" y="57">P1:A</text>
-        <rect class="pf" x="340" y="40" width="30" height="25"/><text class="nm" x="355" y="57">P2:A</text>
-        <rect class="pf" x="375" y="40" width="30" height="25"/><text class="nm" x="390" y="57">P3:A</text>
+        <text x="20" y="25" class="cc-h">Broadcast — 1 → todos</text>
+        <g transform="translate(20,35)">
+          <rect class="cc-pf" x="0"   y="0" width="34" height="24"/><text class="cc-nm" x="17" y="17">P0:A</text>
+          <rect class="cc-p"  x="38"  y="0" width="34" height="24"/><text class="cc-nm" x="55" y="17">P1:_</text>
+          <rect class="cc-p"  x="76"  y="0" width="34" height="24"/><text class="cc-nm" x="93" y="17">P2:_</text>
+          <rect class="cc-p"  x="114" y="0" width="34" height="24"/><text class="cc-nm" x="131" y="17">P3:_</text>
+          <text class="cc-op" x="225" y="17">→ MPI_Bcast →</text>
+          <rect class="cc-pf" x="300" y="0" width="34" height="24"/><text class="cc-nm" x="317" y="17">P0:A</text>
+          <rect class="cc-pf" x="338" y="0" width="34" height="24"/><text class="cc-nm" x="355" y="17">P1:A</text>
+          <rect class="cc-pf" x="376" y="0" width="34" height="24"/><text class="cc-nm" x="393" y="17">P2:A</text>
+          <rect class="cc-pf" x="414" y="0" width="34" height="24"/><text class="cc-nm" x="431" y="17">P3:A</text>
+        </g>
 
         <!-- Scatter -->
-        <text x="20" y="95" class="h">Scatter: 1 reparte trozos</text>
-        <rect class="pf" x="20" y="110" width="80" height="25"/><text class="nm" x="60" y="127">P0: A B C D</text>
-        <rect class="p" x="105" y="110" width="30" height="25"/><text class="nm" x="120" y="127">_</text>
-        <rect class="p" x="140" y="110" width="30" height="25"/><text class="nm" x="155" y="127">_</text>
-        <rect class="p" x="175" y="110" width="30" height="25"/><text class="nm" x="190" y="127">_</text>
-        <text x="225" y="125" class="d">→ MPI_Scatter →</text>
-        <rect class="pf" x="335" y="110" width="30" height="25"/><text class="nm" x="350" y="127">P0:A</text>
-        <rect class="pf" x="370" y="110" width="30" height="25"/><text class="nm" x="385" y="127">P1:B</text>
-        <rect class="pf" x="405" y="110" width="30" height="25"/><text class="nm" x="420" y="127">P2:C</text>
-        <rect class="pf" x="440" y="110" width="30" height="25"/><text class="nm" x="455" y="127">P3:D</text>
+        <text x="20" y="95" class="cc-h">Scatter — 1 reparte trozos</text>
+        <g transform="translate(20,105)">
+          <rect class="cc-pf" x="0"   y="0" width="100" height="24"/><text class="cc-nm" x="50" y="17">P0: A B C D</text>
+          <rect class="cc-p"  x="104" y="0" width="34"  height="24"/><text class="cc-nm" x="121" y="17">P1:_</text>
+          <rect class="cc-p"  x="142" y="0" width="34"  height="24"/><text class="cc-nm" x="159" y="17">P2:_</text>
+          <rect class="cc-p"  x="180" y="0" width="34"  height="24"/><text class="cc-nm" x="197" y="17">P3:_</text>
+          <text class="cc-op" x="265" y="17">→ MPI_Scatter →</text>
+          <rect class="cc-pf" x="335" y="0" width="34" height="24"/><text class="cc-nm" x="352" y="17">P0:A</text>
+          <rect class="cc-pf" x="373" y="0" width="34" height="24"/><text class="cc-nm" x="390" y="17">P1:B</text>
+          <rect class="cc-pf" x="411" y="0" width="34" height="24"/><text class="cc-nm" x="428" y="17">P2:C</text>
+          <rect class="cc-pf" x="449" y="0" width="34" height="24"/><text class="cc-nm" x="466" y="17">P3:D</text>
+        </g>
 
         <!-- Gather -->
-        <text x="20" y="165" class="h">Gather: todos → 1</text>
-        <rect class="pf" x="20" y="180" width="30" height="25"/><text class="nm" x="35" y="197">P0:A</text>
-        <rect class="pf" x="55" y="180" width="30" height="25"/><text class="nm" x="70" y="197">P1:B</text>
-        <rect class="pf" x="90" y="180" width="30" height="25"/><text class="nm" x="105" y="197">P2:C</text>
-        <rect class="pf" x="125" y="180" width="30" height="25"/><text class="nm" x="140" y="197">P3:D</text>
-        <text x="175" y="195" class="d">→ MPI_Gather →</text>
-        <rect class="pf" x="285" y="180" width="80" height="25"/><text class="nm" x="325" y="197">P0: A B C D</text>
-        <rect class="p" x="370" y="180" width="30" height="25"/><text class="nm" x="385" y="197">_</text>
-        <rect class="p" x="405" y="180" width="30" height="25"/><text class="nm" x="420" y="197">_</text>
-        <rect class="p" x="440" y="180" width="30" height="25"/><text class="nm" x="455" y="197">_</text>
+        <text x="20" y="165" class="cc-h">Gather — todos → 1</text>
+        <g transform="translate(20,175)">
+          <rect class="cc-pf" x="0"   y="0" width="34" height="24"/><text class="cc-nm" x="17" y="17">P0:A</text>
+          <rect class="cc-pf" x="38"  y="0" width="34" height="24"/><text class="cc-nm" x="55" y="17">P1:B</text>
+          <rect class="cc-pf" x="76"  y="0" width="34" height="24"/><text class="cc-nm" x="93" y="17">P2:C</text>
+          <rect class="cc-pf" x="114" y="0" width="34" height="24"/><text class="cc-nm" x="131" y="17">P3:D</text>
+          <text class="cc-op" x="225" y="17">→ MPI_Gather →</text>
+          <rect class="cc-pf" x="300" y="0" width="100" height="24"/><text class="cc-nm" x="350" y="17">P0: A B C D</text>
+          <rect class="cc-p"  x="404" y="0" width="34" height="24"/><text class="cc-nm" x="421" y="17">P1:_</text>
+          <rect class="cc-p"  x="442" y="0" width="34" height="24"/><text class="cc-nm" x="459" y="17">P2:_</text>
+        </g>
+
+        <!-- Allgather -->
+        <text x="20" y="235" class="cc-h">Allgather — todos → todos</text>
+        <g transform="translate(20,245)">
+          <rect class="cc-pf" x="0"   y="0" width="34" height="24"/><text class="cc-nm" x="17" y="17">P0:A</text>
+          <rect class="cc-pf" x="38"  y="0" width="34" height="24"/><text class="cc-nm" x="55" y="17">P1:B</text>
+          <rect class="cc-pf" x="76"  y="0" width="34" height="24"/><text class="cc-nm" x="93" y="17">P2:C</text>
+          <rect class="cc-pf" x="114" y="0" width="34" height="24"/><text class="cc-nm" x="131" y="17">P3:D</text>
+          <text class="cc-op" x="225" y="17">→ MPI_Allgather →</text>
+          <rect class="cc-pf" x="300" y="0" width="100" height="24"/><text class="cc-nm" x="350" y="17">P0: A B C D</text>
+          <rect class="cc-pf" x="404" y="0" width="100" height="24"/><text class="cc-nm" x="454" y="17">P1: A B C D</text>
+          <rect class="cc-pf" x="508" y="0" width="100" height="24"/><text class="cc-nm" x="558" y="17">P2: A B C D</text>
+          <rect class="cc-pf" x="612" y="0" width="100" height="24"/><text class="cc-nm" x="662" y="17">P3: A B C D</text>
+        </g>
 
         <!-- Reduce -->
-        <text x="20" y="235" class="h">Reduce: combina con op (suma, max...)</text>
-        <rect class="pf" x="20" y="250" width="30" height="25"/><text class="nm" x="35" y="267">P0:3</text>
-        <rect class="pf" x="55" y="250" width="30" height="25"/><text class="nm" x="70" y="267">P1:1</text>
-        <rect class="pf" x="90" y="250" width="30" height="25"/><text class="nm" x="105" y="267">P2:4</text>
-        <rect class="pf" x="125" y="250" width="30" height="25"/><text class="nm" x="140" y="267">P3:2</text>
-        <text x="175" y="265" class="d">→ MPI_Reduce(+) →</text>
-        <rect class="pf" x="295" y="250" width="30" height="25"/><text class="nm" x="310" y="267">P0:10</text>
+        <text x="20" y="305" class="cc-h">Reduce — combina con operador (suma, max, …) en un proceso</text>
+        <g transform="translate(20,315)">
+          <rect class="cc-pf" x="0"   y="0" width="34" height="24"/><text class="cc-nm" x="17" y="17">P0:3</text>
+          <rect class="cc-pf" x="38"  y="0" width="34" height="24"/><text class="cc-nm" x="55" y="17">P1:1</text>
+          <rect class="cc-pf" x="76"  y="0" width="34" height="24"/><text class="cc-nm" x="93" y="17">P2:4</text>
+          <rect class="cc-pf" x="114" y="0" width="34" height="24"/><text class="cc-nm" x="131" y="17">P3:2</text>
+          <text class="cc-op" x="230" y="17">→ MPI_Reduce(+) →</text>
+          <rect class="cc-pf" x="320" y="0" width="40" height="24"/><text class="cc-nm" x="340" y="17">P0:10</text>
+          <rect class="cc-p"  x="364" y="0" width="40" height="24"/><text class="cc-nm" x="384" y="17">P1:_</text>
+          <rect class="cc-p"  x="408" y="0" width="40" height="24"/><text class="cc-nm" x="428" y="17">P2:_</text>
+          <rect class="cc-p"  x="452" y="0" width="40" height="24"/><text class="cc-nm" x="472" y="17">P3:_</text>
+        </g>
 
         <!-- AllReduce -->
-        <text x="20" y="305" class="h">AllReduce: Reduce + Broadcast</text>
-        <rect class="pf" x="20" y="320" width="30" height="25"/><text class="nm" x="35" y="337">P0:3</text>
-        <rect class="pf" x="55" y="320" width="30" height="25"/><text class="nm" x="70" y="337">P1:1</text>
-        <rect class="pf" x="90" y="320" width="30" height="25"/><text class="nm" x="105" y="337">P2:4</text>
-        <rect class="pf" x="125" y="320" width="30" height="25"/><text class="nm" x="140" y="337">P3:2</text>
-        <text x="175" y="335" class="d">→ MPI_Allreduce(+) →</text>
-        <rect class="pf" x="295" y="320" width="30" height="25"/><text class="nm" x="310" y="337">P0:10</text>
-        <rect class="pf" x="330" y="320" width="30" height="25"/><text class="nm" x="345" y="337">P1:10</text>
-        <rect class="pf" x="365" y="320" width="30" height="25"/><text class="nm" x="380" y="337">P2:10</text>
-        <rect class="pf" x="400" y="320" width="30" height="25"/><text class="nm" x="415" y="337">P3:10</text>
-
-        <text x="500" y="180" class="d" style="font-style: italic; font-size: 11px;">Otras colectivas:</text>
-        <text x="500" y="200" class="nm" style="text-anchor: start;">MPI_Barrier</text>
-        <text x="500" y="215" class="nm" style="text-anchor: start;">MPI_Allgather</text>
-        <text x="500" y="230" class="nm" style="text-anchor: start;">MPI_Alltoall</text>
-        <text x="500" y="245" class="nm" style="text-anchor: start;">MPI_Reduce_scatter</text>
-        <text x="500" y="260" class="nm" style="text-anchor: start;">MPI_Scan</text>
+        <text x="20" y="375" class="cc-h">Allreduce — Reduce + Broadcast en una sola llamada</text>
+        <g transform="translate(20,385)">
+          <rect class="cc-pf" x="0"   y="0" width="34" height="24"/><text class="cc-nm" x="17" y="17">P0:3</text>
+          <rect class="cc-pf" x="38"  y="0" width="34" height="24"/><text class="cc-nm" x="55" y="17">P1:1</text>
+          <rect class="cc-pf" x="76"  y="0" width="34" height="24"/><text class="cc-nm" x="93" y="17">P2:4</text>
+          <rect class="cc-pf" x="114" y="0" width="34" height="24"/><text class="cc-nm" x="131" y="17">P3:2</text>
+          <text class="cc-op" x="235" y="17">→ MPI_Allreduce(+) →</text>
+          <rect class="cc-pf" x="335" y="0" width="40" height="24"/><text class="cc-nm" x="355" y="17">P0:10</text>
+          <rect class="cc-pf" x="379" y="0" width="40" height="24"/><text class="cc-nm" x="399" y="17">P1:10</text>
+          <rect class="cc-pf" x="423" y="0" width="40" height="24"/><text class="cc-nm" x="443" y="17">P2:10</text>
+          <rect class="cc-pf" x="467" y="0" width="40" height="24"/><text class="cc-nm" x="487" y="17">P3:10</text>
+        </g>
       </svg>
-      <p class="caption">Las colectivas más usadas. Reglas de oro: todas las llamadas en un comunicador, todos los procesos las invocan, los <em>buffers de envío</em> en root pueden tener tamaños distintos a los de recepción.</p>
+      <p class="caption">Otras colectivas no dibujadas: <code>MPI_Barrier</code> (sincronización pura), <code>MPI_Alltoall</code> (intercambio total), <code>MPI_Reduce_scatter</code>, <code>MPI_Scan</code> (reducción prefija).</p>
     </div>
 
     <div class="key-concept">
       <span class="label">ATAJO MUY COMÚN</span>
       <h3><code>MPI_Reduce</code> y <code>MPI_Allreduce</code></h3>
-      <p>Si todos los procesos van a necesitar el resultado de la reducción (por ejemplo, el error global en un solver iterativo), usa <code>MPI_Allreduce</code>. Equivale a <code>Reduce</code> + <code>Bcast</code> pero la implementación es notablemente más eficiente.</p>
+      <p>Si todos los procesos van a necesitar el resultado de la reducción (por ejemplo, el error global en un solver iterativo), usa <code>MPI_Allreduce</code>. Equivale a <code>Reduce</code> + <code>Bcast</code> pero la implementación es notablemente más eficiente (un solo árbol de comunicación bidireccional).</p>
     </div>
+
+    <h3>Operaciones de reducción disponibles</h3>
+    <table>
+      <tr><th>Operador MPI</th><th>Operación</th></tr>
+      <tr><td><code>MPI_MAX</code></td><td>máximo</td></tr>
+      <tr><td><code>MPI_MIN</code></td><td>mínimo</td></tr>
+      <tr><td><code>MPI_SUM</code></td><td>suma</td></tr>
+      <tr><td><code>MPI_PROD</code></td><td>producto</td></tr>
+      <tr><td><code>MPI_LAND</code></td><td>and lógico</td></tr>
+      <tr><td><code>MPI_BAND</code></td><td>and a nivel de bit</td></tr>
+      <tr><td><code>MPI_LOR</code></td><td>or lógico</td></tr>
+      <tr><td><code>MPI_BOR</code></td><td>or a nivel de bit</td></tr>
+      <tr><td><code>MPI_LXOR</code></td><td>xor lógico</td></tr>
+      <tr><td><code>MPI_BXOR</code></td><td>xor a nivel de bit</td></tr>
+      <tr><td><code>MPI_MAXLOC</code></td><td>valor máximo y posición donde ocurre</td></tr>
+      <tr><td><code>MPI_MINLOC</code></td><td>valor mínimo y posición donde ocurre</td></tr>
+    </table>
+    <p>También puedes definir operaciones propias con <code>MPI_Op_create</code>.</p>
   </section>
 
   <section>
-    <h2>Ejemplo: integral por trapecios</h2>
-    <p>El proceso 0 reparte el intervalo, cada uno calcula su parte, y al final se suman las integrales parciales.</p>
+    <h2>Ejemplo canónico: integral por trapecios</h2>
+    <p>Problema: aproximar ∫<sub>a</sub><sup>b</sup> f(x) dx con la regla del trapecio sobre <em>n</em> subintervalos, repartiendo el trabajo entre <em>p</em> procesos.</p>
 
-<pre><code><span class="kw">double</span> integral_local(<span class="kw">double</span> a, <span class="kw">double</span> b, <span class="kw">int</span> n) {
-    <span class="kw">double</span> h = (b - a) / n, s = (f(a) + f(b)) / <span class="nm">2.0</span>;
-    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">1</span>; i &lt; n; i++) s += f(a + i*h);
+    <p><strong>Estrategia</strong> (slide pág. 15):</p>
+    <ul>
+      <li>Cada proceso necesita saber: número total <em>p</em>, su <em>rank</em>, intervalo [a, b] y número de subintervalos <em>n</em>.</li>
+      <li>El proceso 0 lee los datos, los reparte, recibe las integrales parciales y combina el resultado.</li>
+      <li>Cada uno calcula su trozo del intervalo y aplica la regla del trapecio localmente.</li>
+    </ul>
+
+    <h3>Versión con send/recv punto a punto</h3>
+<pre><code><span class="kw">double</span> integral_local(<span class="kw">double</span> a, <span class="kw">double</span> b, <span class="kw">int</span> n, <span class="kw">double</span> h) {
+    <span class="kw">double</span> s = (f(a) + f(b)) / <span class="nm">2.0</span>, x = a;
+    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">1</span>; i &lt;= n - <span class="nm">1</span>; i++) { x += h; s += f(x); }
     <span class="kw">return</span> s * h;
 }
 
 <span class="kw">int</span> main(<span class="kw">int</span> argc, <span class="kw">char</span> **argv) {
+    <span class="kw">int</span> rank, p, n, local_n, source, dest = <span class="nm">0</span>, tag = <span class="nm">50</span>;
+    <span class="kw">float</span> a, b, h, local_a, local_b, integral, total;
+    MPI_Status status;
+
     <span class="fn">MPI_Init</span>(&amp;argc, &amp;argv);
-    <span class="kw">int</span> rank, nproc;
     <span class="fn">MPI_Comm_rank</span>(MPI_COMM_WORLD, &amp;rank);
-    <span class="fn">MPI_Comm_size</span>(MPI_COMM_WORLD, &amp;nproc);
+    <span class="fn">MPI_Comm_size</span>(MPI_COMM_WORLD, &amp;p);
 
-    <span class="kw">double</span> a = <span class="nm">0.0</span>, b = <span class="nm">1.0</span>;
-    <span class="kw">int</span> n = <span class="nm">1000000</span>;
-    <span class="kw">double</span> h_global = (b - a) / nproc;
+    Get_data(rank, p, &amp;a, &amp;b, &amp;n);             <span class="cm">// reparte a, b, n a todos</span>
+    h = (b - a) / n;
+    local_n = n / p;
+    local_a = a + rank * local_n * h;
+    local_b = local_a + local_n * h;
+    integral = integral_local(local_a, local_b, local_n, h);
 
-    <span class="cm">// cada proceso integra su trozo</span>
-    <span class="kw">double</span> a_local = a + rank * h_global;
-    <span class="kw">double</span> b_local = a_local + h_global;
-    <span class="kw">double</span> integ_local = integral_local(a_local, b_local, n / nproc);
-    <span class="kw">double</span> integ_total;
-
-    <span class="fn">MPI_Reduce</span>(&amp;integ_local, &amp;integ_total, <span class="nm">1</span>, MPI_DOUBLE,
-               MPI_SUM, <span class="nm">0</span>, MPI_COMM_WORLD);
-
-    <span class="kw">if</span> (rank == <span class="nm">0</span>) printf(<span class="st">"Integral = %.10f\n"</span>, integ_total);
+    <span class="kw">if</span> (rank == <span class="nm">0</span>) {                            <span class="cm">// el 0 recoge y combina</span>
+        total = integral;
+        <span class="kw">for</span> (source = <span class="nm">1</span>; source &lt; p; source++) {
+            <span class="fn">MPI_Recv</span>(&amp;integral, <span class="nm">1</span>, MPI_FLOAT, source, tag,
+                     MPI_COMM_WORLD, &amp;status);
+            total += integral;
+        }
+        printf(<span class="st">"Integral entre %f y %f = %f\n"</span>, a, b, total);
+    } <span class="kw">else</span> {
+        <span class="fn">MPI_Send</span>(&amp;integral, <span class="nm">1</span>, MPI_FLOAT, dest, tag, MPI_COMM_WORLD);
+    }
     <span class="fn">MPI_Finalize</span>();
     <span class="kw">return</span> <span class="nm">0</span>;
 }</code></pre>
+
+    <p><strong>Coste de los envíos individuales de <code>Get_data</code></strong> (3 envíos por cada proceso destinatario):</p>
+    <div class="key-concept">
+      <span class="label">CUENTAS DE COMUNICACIONES</span>
+      <h3>t<sub>Get_data, p2p</sub> = 3 (p − 1)(t<sub>s</sub> + t<sub>w</sub>)</h3>
+      <p>El 0 envía 3 valores a cada uno de los <em>p − 1</em> demás. Cada envío paga la latencia t<sub>s</sub> + 1 dato × t<sub>w</sub>. La suma da el coste indicado.</p>
+    </div>
+
+    <h3>Versión con colectivas: <code>Bcast</code> + <code>Reduce</code></h3>
+<pre><code><span class="kw">void</span> Get_data(<span class="kw">int</span> rank, <span class="kw">float</span> *a, <span class="kw">float</span> *b, <span class="kw">int</span> *n) {
+    <span class="kw">if</span> (rank == <span class="nm">0</span>) {
+        printf(<span class="st">"Enter a, b, n\n"</span>);
+        scanf(<span class="st">"%f %f %d"</span>, a, b, n);
+    }
+    <span class="fn">MPI_Bcast</span>(a, <span class="nm">1</span>, MPI_FLOAT, <span class="nm">0</span>, MPI_COMM_WORLD);
+    <span class="fn">MPI_Bcast</span>(b, <span class="nm">1</span>, MPI_FLOAT, <span class="nm">0</span>, MPI_COMM_WORLD);
+    <span class="fn">MPI_Bcast</span>(n, <span class="nm">1</span>, MPI_INT,   <span class="nm">0</span>, MPI_COMM_WORLD);
+}
+
+<span class="cm">// En el main:</span>
+<span class="fn">MPI_Reduce</span>(&amp;integral, &amp;total, <span class="nm">1</span>, MPI_FLOAT, MPI_SUM,
+           <span class="nm">0</span>, MPI_COMM_WORLD);</code></pre>
+    <p><strong>Coste con broadcast</strong>: 3 (t<sub>sb</sub> + t<sub>wb</sub>), donde t<sub>sb</sub> y t<sub>wb</sub> son las constantes para el árbol de broadcast (logarítmicas en <em>p</em>, no lineales). Diferencia clave: el modelo punto a punto es <strong>O(p)</strong>; el broadcast es <strong>O(log p)</strong>. En clusters con muchos procesos, la diferencia es enorme.</p>
   </section>
 
   <section>
-    <h2>Cuando los datos no son contiguos</h2>
-    <p>MPI envía bloques contiguos de un mismo tipo. Cuando esto no se cumple —arrays de punteros, estructuras complejas, subarrays con stride— hay tres opciones:</p>
+    <h2>Agrupación de datos</h2>
+    <p>Tres mensajes pequeños cuestan tres latencias t<sub>s</sub>. Un mensaje grande con los mismos datos paga una sola. Por eso conviene agruparlos. MPI ofrece tres mecanismos:</p>
 
     <div class="comparison">
       <div class="col">
-        <h4>Tipos derivados</h4>
-        <p>Construyes un nuevo <code>MPI_Datatype</code> que describe la disposición real en memoria. Más limpio para uso repetido.</p>
-        <p>Funciones: <code>MPI_Type_vector</code>, <code>MPI_Type_indexed</code>, <code>MPI_Type_struct</code>. Hay que llamar a <code>MPI_Type_commit</code> antes de usar y <code>MPI_Type_free</code> al final.</p>
+        <h4>1 · Array contiguo</h4>
+        <p>Lo más simple. Si los datos a enviar son del mismo tipo, los pones en un array y mandas un único mensaje. Sirve para datos homogéneos.</p>
       </div>
       <div class="col alt">
-        <h4>Pack / Unpack</h4>
-        <p>Tú mismo serializas en un buffer contiguo con <code>MPI_Pack</code>, envías como <code>MPI_PACKED</code>, y el receptor deserializa con <code>MPI_Unpack</code>.</p>
-        <p>Más flexible para datos que cambian de forma; menos eficiente si se hace en bucle interno.</p>
+        <h4>2 · Tipos derivados</h4>
+        <p>Construyes un nuevo <code>MPI_Datatype</code> que describe la disposición real en memoria. La inversión en crear el tipo se amortiza si lo usas muchas veces.</p>
+      </div>
+      <div class="col">
+        <h4>3 · Pack / Unpack</h4>
+        <p>Tú mismo serializas en un buffer contiguo con <code>MPI_Pack</code>, envías como <code>MPI_PACKED</code>, y el receptor deserializa con <code>MPI_Unpack</code>. Más flexible, menos eficiente.</p>
       </div>
     </div>
+
+    <h3>Tipos derivados: constructores</h3>
+    <table>
+      <tr><th>Constructor</th><th>Para qué sirve</th></tr>
+      <tr>
+        <td><code>MPI_Type_contiguous</code></td>
+        <td>Datos adyacentes del mismo tipo. Equivale a un «mini-array».</td>
+      </tr>
+      <tr>
+        <td><code>MPI_Type_vector</code></td>
+        <td>Bloques idénticos igualmente espaciados (con <em>stride</em>). Útil para columnas de matrices almacenadas por filas.</td>
+      </tr>
+      <tr>
+        <td><code>MPI_Type_indexed</code></td>
+        <td>Bloques de tamaños distintos en posiciones arbitrarias.</td>
+      </tr>
+      <tr>
+        <td><code>MPI_Type_create_struct</code></td>
+        <td>Estructura heterogénea: cada bloque puede ser de un tipo distinto. El caso general.</td>
+      </tr>
+    </table>
+
+    <p>Todo tipo derivado pasa por dos fases obligatorias:</p>
+    <ol>
+      <li><strong>Construcción</strong> con uno de los constructores anteriores.</li>
+      <li><strong>Commit</strong> con <code>MPI_Type_commit(&amp;tipo)</code> antes de poder usarlo en una comunicación.</li>
+      <li>Al terminar, <code>MPI_Type_free(&amp;tipo)</code> libera recursos.</li>
+    </ol>
+
+    <h3>Ejemplo: estructura con dos floats y un int</h3>
+<pre><code><span class="kw">typedef</span> <span class="kw">struct</span> { <span class="kw">float</span> a, b; <span class="kw">int</span> n; } INDATA_TYPE;
+
+<span class="kw">void</span> Build_derived_type(INDATA_TYPE *indata, MPI_Datatype *new_type) {
+    <span class="kw">int</span>         block_lengths[<span class="nm">3</span>] = { <span class="nm">1</span>, <span class="nm">1</span>, <span class="nm">1</span> };
+    MPI_Aint    displacements[<span class="nm">3</span>], addresses[<span class="nm">4</span>];
+    MPI_Datatype typelist[<span class="nm">3</span>] = { MPI_FLOAT, MPI_FLOAT, MPI_INT };
+
+    <span class="cm">// Calcular desplazamientos relativos al inicio de la estructura</span>
+    <span class="fn">MPI_Get_address</span>(indata,        &amp;addresses[<span class="nm">0</span>]);
+    <span class="fn">MPI_Get_address</span>(&amp;(indata-&gt;a), &amp;addresses[<span class="nm">1</span>]);
+    <span class="fn">MPI_Get_address</span>(&amp;(indata-&gt;b), &amp;addresses[<span class="nm">2</span>]);
+    <span class="fn">MPI_Get_address</span>(&amp;(indata-&gt;n), &amp;addresses[<span class="nm">3</span>]);
+    displacements[<span class="nm">0</span>] = addresses[<span class="nm">1</span>] - addresses[<span class="nm">0</span>];
+    displacements[<span class="nm">1</span>] = addresses[<span class="nm">2</span>] - addresses[<span class="nm">0</span>];
+    displacements[<span class="nm">2</span>] = addresses[<span class="nm">3</span>] - addresses[<span class="nm">0</span>];
+
+    <span class="fn">MPI_Type_create_struct</span>(<span class="nm">3</span>, block_lengths, displacements,
+                           typelist, new_type);
+    <span class="fn">MPI_Type_commit</span>(new_type);
+}
+
+<span class="cm">// Uso: broadcast de la estructura como un único mensaje</span>
+INDATA_TYPE datos;
+MPI_Datatype mpi_indata;
+Build_derived_type(&amp;datos, &amp;mpi_indata);
+<span class="fn">MPI_Bcast</span>(&amp;datos, <span class="nm">1</span>, mpi_indata, <span class="nm">0</span>, MPI_COMM_WORLD);</code></pre>
+
+    <p>El detalle importante: las direcciones se obtienen con <code>MPI_Get_address</code>, no con el operador <code>&amp;</code> de C, porque MPI necesita un tipo de dirección portable (<code>MPI_Aint</code>) que puede no coincidir con un puntero estándar.</p>
+
+    <h3>Ejemplo alternativo con Pack/Unpack</h3>
+<pre><code><span class="kw">char</span> buffer[<span class="nm">100</span>];
+<span class="kw">int</span> position = <span class="nm">0</span>;
+
+<span class="kw">if</span> (rank == <span class="nm">0</span>) {
+    <span class="fn">MPI_Pack</span>(&amp;a, <span class="nm">1</span>, MPI_FLOAT, buffer, <span class="nm">100</span>, &amp;position, MPI_COMM_WORLD);
+    <span class="fn">MPI_Pack</span>(&amp;b, <span class="nm">1</span>, MPI_FLOAT, buffer, <span class="nm">100</span>, &amp;position, MPI_COMM_WORLD);
+    <span class="fn">MPI_Pack</span>(&amp;n, <span class="nm">1</span>, MPI_INT,   buffer, <span class="nm">100</span>, &amp;position, MPI_COMM_WORLD);
+    <span class="fn">MPI_Bcast</span>(buffer, <span class="nm">100</span>, MPI_PACKED, <span class="nm">0</span>, MPI_COMM_WORLD);
+} <span class="kw">else</span> {
+    <span class="fn">MPI_Bcast</span>(buffer, <span class="nm">100</span>, MPI_PACKED, <span class="nm">0</span>, MPI_COMM_WORLD);
+    <span class="fn">MPI_Unpack</span>(buffer, <span class="nm">100</span>, &amp;position, &amp;a, <span class="nm">1</span>, MPI_FLOAT, MPI_COMM_WORLD);
+    <span class="fn">MPI_Unpack</span>(buffer, <span class="nm">100</span>, &amp;position, &amp;b, <span class="nm">1</span>, MPI_FLOAT, MPI_COMM_WORLD);
+    <span class="fn">MPI_Unpack</span>(buffer, <span class="nm">100</span>, &amp;position, &amp;n, <span class="nm">1</span>, MPI_INT,   MPI_COMM_WORLD);
+}</code></pre>
+    <p>El <code>position</code> es entrada y salida: MPI lo actualiza tras cada pack/unpack para apuntar al siguiente hueco del buffer. Hay que desempaquetar en el <em>mismo orden</em> en que se empaquetó.</p>
+  </section>
+
+  <section>
+    <h2>Comunicadores (avanzado)</h2>
+    <p>Un comunicador consta de dos cosas:</p>
+    <ul>
+      <li>Un <strong>grupo</strong>: colección ordenada de procesos a los que se asignan ranks 0…p−1.</li>
+      <li>Un <strong>contexto</strong>: identificador que el sistema usa internamente para evitar que mensajes de un comunicador interfieran con los de otro.</li>
+    </ul>
+    <p>Además, se le puede asociar una <strong>topología virtual</strong> (cartesiana o de grafo).</p>
+
+    <h3>Tipos de comunicadores</h3>
+    <ul>
+      <li><strong>Intra-comunicadores</strong>: los habituales. Para comunicarse dentro de un mismo grupo (<code>MPI_COMM_WORLD</code> es uno).</li>
+      <li><strong>Inter-comunicadores</strong>: para comunicar procesos en dos comunicadores distintos. Usado cuando se desarrollan librerías independientes con sus propios comunicadores.</li>
+    </ul>
+
+    <h3>Crear un comunicador a partir de un grupo</h3>
+    <p>Caso: tienes p = q² procesos organizados como malla q×q. Quieres un comunicador con los procesos de la primera fila.</p>
+<pre><code>MPI_Group MPI_GROUP_WORLD, first_row_group;
+MPI_Comm  first_row_comm;
+<span class="kw">int</span> *process_ranks = malloc(q * <span class="kw">sizeof</span>(<span class="kw">int</span>));
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; q; i++) process_ranks[i] = i;
+
+<span class="fn">MPI_Comm_group</span>(MPI_COMM_WORLD, &amp;MPI_GROUP_WORLD);        <span class="cm">// local</span>
+<span class="fn">MPI_Group_incl</span>(MPI_GROUP_WORLD, q, process_ranks,
+               &amp;first_row_group);                          <span class="cm">// local</span>
+<span class="fn">MPI_Comm_create</span>(MPI_COMM_WORLD, first_row_group,
+                &amp;first_row_comm);                          <span class="cm">// colectiva</span></code></pre>
+    <p>Importante: <code>MPI_Comm_create</code> es <em>colectiva</em> sobre el comunicador original. Todos los procesos en <code>MPI_COMM_WORLD</code> deben llamarla, incluso los que no vayan a formar parte del nuevo grupo.</p>
+
+    <h3>Atajo: <code>MPI_Comm_split</code></h3>
+    <p>Crea un nuevo comunicador para cada valor distinto de la clave de partición. Los procesos con la misma clave acaban en el mismo comunicador.</p>
+<pre><code><span class="kw">int</span> my_row = rank / q;
+MPI_Comm my_row_comm;
+<span class="fn">MPI_Comm_split</span>(MPI_COMM_WORLD, my_row, rank, &amp;my_row_comm);
+<span class="cm">// Crea q comunicadores nuevos, uno por cada fila de la malla.</span>
+<span class="cm">// Dentro de cada uno, los ranks se asignan según el orden de la 2.ª clave.</span></code></pre>
+    <p>Para excluir un proceso del nuevo comunicador, pásale <code>MPI_UNDEFINED</code> como clave; recibe <code>MPI_COMM_NULL</code>.</p>
+  </section>
+
+  <section>
+    <h2>Topologías cartesianas (avanzado)</h2>
+    <p>Cuando los procesos representan elementos de una malla (típico en problemas físicos: stencil 2D/3D), pedir a MPI que asocie una topología cartesiana al comunicador permite:</p>
+    <ul>
+      <li>Direccionar procesos por coordenadas (<code>(i, j)</code>) en lugar de ranks lineales.</li>
+      <li>Que el runtime reordene la asignación de procesos a nodos físicos para que vecinos lógicos queden cerca.</li>
+      <li>Particionar la malla en sub-mallas con una llamada.</li>
+    </ul>
+
+<pre><code><span class="kw">int</span> dims[<span class="nm">2</span>]    = { q, q };       <span class="cm">// malla q × q</span>
+<span class="kw">int</span> periods[<span class="nm">2</span>] = { <span class="nm">0</span>, <span class="nm">0</span> };       <span class="cm">// no circular en ninguna dim</span>
+<span class="kw">int</span> reorder    = <span class="nm">1</span>;              <span class="cm">// permite reordenamiento físico</span>
+MPI_Comm grid;
+
+<span class="fn">MPI_Cart_create</span>(MPI_COMM_WORLD, <span class="nm">2</span>, dims, periods, reorder, &amp;grid);
+
+<span class="kw">int</span> coords[<span class="nm">2</span>], rank_grid;
+<span class="fn">MPI_Comm_rank</span>(grid, &amp;rank_grid);
+<span class="fn">MPI_Cart_coords</span>(grid, rank_grid, <span class="nm">2</span>, coords);  <span class="cm">// rank → (i, j)</span>
+<span class="fn">MPI_Cart_rank</span>  (grid, coords, &amp;rank_grid);     <span class="cm">// (i, j) → rank</span></code></pre>
+
+    <p>Para extraer una sub-malla (por ejemplo, todos los procesos de la misma fila):</p>
+<pre><code><span class="kw">int</span> remain_dims[<span class="nm">2</span>] = { <span class="nm">0</span>, <span class="nm">1</span> };   <span class="cm">// retén la segunda dim, descarta la primera</span>
+MPI_Comm row_comm;
+<span class="fn">MPI_Cart_sub</span>(grid, remain_dims, &amp;row_comm);
+<span class="cm">// Crea q comunicadores, uno por fila. Es colectiva.</span></code></pre>
   </section>
 
   <section>
     <h2>Modelo simple de tiempo de comunicación</h2>
-    <p>Aparecerá una y otra vez en el análisis de algoritmos. El tiempo de mandar <code>n</code> datos es aproximadamente:</p>
+    <p>Aparece una y otra vez en el análisis de algoritmos. El tiempo de mandar <em>n</em> datos es aproximadamente:</p>
 
     <div class="key-concept">
       <span class="label">FÓRMULA QUE HAY QUE RECORDAR</span>
       <h3>t<sub>com</sub> = t<sub>s</sub> + n · t<sub>w</sub></h3>
-      <p><strong>t<sub>s</sub></strong> (startup): coste fijo por iniciar una comunicación, independiente del tamaño. Latencia.</p>
-      <p><strong>t<sub>w</sub></strong> (word time): coste por unidad de dato. Ancho de banda inverso.</p>
-      <p>Implicación práctica: <em>muchos mensajes pequeños</em> son catastróficos. Suele compensar agrupar datos y enviar un único mensaje grande, aunque retrasarse un poco.</p>
+      <p><strong>t<sub>s</sub></strong> (startup): coste fijo por iniciar una comunicación, independiente del tamaño. <em>Latencia</em>.</p>
+      <p><strong>t<sub>w</sub></strong> (word time): coste por unidad de dato. <em>Inverso del ancho de banda</em>.</p>
+      <p>Implicación práctica: <em>muchos mensajes pequeños</em> son catastróficos. Si tienes que enviar k cantidades, fusionarlas en un solo mensaje cambia el coste de k(t<sub>s</sub> + t<sub>w</sub>) a t<sub>s</sub> + k·t<sub>w</sub> —ahorras (k − 1) latencias—.</p>
     </div>
+
+    <p>Para colectivas como broadcast o reduce, las implementaciones eficientes usan árboles binarios o «recursive doubling», con coste <strong>O(log p)</strong> en lugar del O(p) de un bucle ingenuo. Las fórmulas detalladas se ven en la <a href="sesion_06.html">sesión 6</a>.</p>
   </section>
 
   <section>
     <h2>Cuidado con los <em>deadlocks</em></h2>
     <p>El error clásico:</p>
-<pre><code><span class="cm">// AMBOS PROCESOS HACEN ESTO</span>
+<pre><code><span class="cm">// AMBOS PROCESOS EJECUTAN ESTO SIMULTÁNEAMENTE</span>
 <span class="kw">if</span> (rank == <span class="nm">0</span>) {
-    <span class="fn">MPI_Ssend</span>(buf, n, MPI_DOUBLE, <span class="nm">1</span>, ...);   <span class="cm">// espera al recv del 1</span>
-    <span class="fn">MPI_Recv</span> (buf, n, MPI_DOUBLE, <span class="nm">1</span>, ...);
+    <span class="fn">MPI_Ssend</span>(buf, n, MPI_DOUBLE, <span class="nm">1</span>, tag, comm);   <span class="cm">// espera al recv del 1</span>
+    <span class="fn">MPI_Recv</span> (buf, n, MPI_DOUBLE, <span class="nm">1</span>, tag, comm, ...);
 } <span class="kw">else if</span> (rank == <span class="nm">1</span>) {
-    <span class="fn">MPI_Ssend</span>(buf, n, MPI_DOUBLE, <span class="nm">0</span>, ...);   <span class="cm">// espera al recv del 0</span>
-    <span class="fn">MPI_Recv</span> (buf, n, MPI_DOUBLE, <span class="nm">0</span>, ...);
+    <span class="fn">MPI_Ssend</span>(buf, n, MPI_DOUBLE, <span class="nm">0</span>, tag, comm);   <span class="cm">// espera al recv del 0</span>
+    <span class="fn">MPI_Recv</span> (buf, n, MPI_DOUBLE, <span class="nm">0</span>, tag, comm, ...);
 }</code></pre>
 
     <p>Ambos esperan que el otro reciba primero: <strong>deadlock</strong>. Soluciones:</p>
     <ul>
-      <li>Asimetría explícita: uno envía y otro recibe primero.</li>
-      <li>Usar <code>MPI_Sendrecv</code> (intercambio atómico, libre de deadlock).</li>
-      <li>Usar versiones no bloqueantes (<code>MPI_Isend</code> + <code>MPI_Recv</code>).</li>
+      <li><strong>Asimetría explícita</strong>: el rank par envía y luego recibe; el impar al revés.</li>
+      <li><strong><code>MPI_Sendrecv</code></strong>: una sola llamada que combina envío y recepción de forma libre de deadlock.</li>
+      <li><strong>No bloqueantes</strong>: <code>MPI_Isend</code> retorna inmediatamente; el deadlock no aparece.</li>
     </ul>
+
+    <p>Con <code>MPI_Send</code> (estándar) el deadlock puede no manifestarse para mensajes pequeños (la implementación los pone en buffer) pero sí para mensajes grandes. Bug clásicamente «funciona en mi máquina» que estalla al subir el problema.</p>
+  </section>
+
+  <section>
+    <h2>Guía resuelta: ejercicios de la Semana 4</h2>
+
+    <h3>Ejercicio 1 · ampliar <code>hello.c</code> con saludo circular</h3>
+    <p><strong>Enunciado:</strong> que al final cada proceso <em>i</em> mande un saludo al proceso <code>(i+1) % p</code> y, tras recibirlo, lo muestre.</p>
+    <p><strong>Razonamiento:</strong> patrón anillo. Cada proceso envía al sucesor y recibe del predecesor (que es <code>(i-1+p) % p</code>). Con <code>Ssend</code> habría deadlock; con <code>Send</code> «estándar» puede funcionar con mensajes pequeños pero es frágil. Solución limpia: o <code>Sendrecv</code>, o asimetría explícita, o no bloqueantes.</p>
+
+<pre><code><span class="kw">int</span> dest = (rank + <span class="nm">1</span>) % p;
+<span class="kw">int</span> src  = (rank - <span class="nm">1</span> + p) % p;
+<span class="kw">char</span> out[<span class="nm">100</span>], in[<span class="nm">100</span>];
+<span class="kw">int</span> tag = <span class="nm">99</span>;
+
+sprintf(out, <span class="st">"saludo del proceso %d"</span>, rank);
+
+<span class="cm">// Opción A: Sendrecv (recomendada — libre de deadlock)</span>
+<span class="fn">MPI_Sendrecv</span>(out, strlen(out)+<span class="nm">1</span>, MPI_CHAR, dest, tag,
+             in,  <span class="nm">100</span>,             MPI_CHAR, src,  tag,
+             MPI_COMM_WORLD, &amp;status);
+
+printf(<span class="st">"proceso %d recibió: \"%s\"\n"</span>, rank, in);</code></pre>
+
+    <p>Con <code>Sendrecv</code>, MPI se encarga de orquestar las dos operaciones simultáneamente sin riesgo de bloqueo. Los buffers de envío y recepción <em>deben</em> ser distintos.</p>
+
+    <h3>Ejercicio 2 · ampliar <code>broadcast.c</code> con cadena de 10 caracteres</h3>
+    <p><strong>Enunciado:</strong> además de <code>a, b, n</code>, distribuir una cadena de 10 caracteres.</p>
+    <p><strong>Razonamiento:</strong> un nuevo <code>Bcast</code> sobre un array de <code>char</code> con tipo <code>MPI_CHAR</code> y count = 10.</p>
+
+<pre><code><span class="kw">char</span> cadena[<span class="nm">10</span>];
+
+<span class="kw">if</span> (rank == <span class="nm">0</span>) {
+    printf(<span class="st">"Cadena (max 9 caracteres): "</span>);
+    scanf(<span class="st">"%9s"</span>, cadena);                <span class="cm">// %9s para dejar sitio al \0</span>
+}
+
+<span class="fn">MPI_Bcast</span>(&amp;a,     <span class="nm">1</span>,  MPI_FLOAT, <span class="nm">0</span>, MPI_COMM_WORLD);
+<span class="fn">MPI_Bcast</span>(&amp;b,     <span class="nm">1</span>,  MPI_FLOAT, <span class="nm">0</span>, MPI_COMM_WORLD);
+<span class="fn">MPI_Bcast</span>(&amp;n,     <span class="nm">1</span>,  MPI_INT,   <span class="nm">0</span>, MPI_COMM_WORLD);
+<span class="fn">MPI_Bcast</span>(cadena, <span class="nm">10</span>, MPI_CHAR,  <span class="nm">0</span>, MPI_COMM_WORLD);   <span class="cm">// nuevo</span>
+
+<span class="kw">if</span> (rank != <span class="nm">0</span>)
+    printf(<span class="st">"P%d: a=%f b=%f n=%d cadena=%s\n"</span>, rank, a, b, n, cadena);</code></pre>
+
+    <p>Mejora opcional: agruparlo todo con <code>MPI_Pack</code> o un tipo derivado para un único <code>Bcast</code>; pagas una latencia en lugar de cuatro.</p>
+
+    <h3>Ejercicio 3 · ampliar <code>reduce.c</code> con máximo por posición</h3>
+    <p><strong>Enunciado:</strong> además de la suma, calcular el máximo de cada posición de los arrays locales.</p>
+    <p><strong>Razonamiento:</strong> <code>MPI_Reduce</code> opera elemento a elemento cuando <code>count &gt; 1</code>. Basta una segunda reducción con <code>MPI_MAX</code> sobre el mismo array.</p>
+
+<pre><code><span class="kw">int</span> *suma   = <span class="kw">NULL</span>;
+<span class="kw">int</span> *maximo = <span class="kw">NULL</span>;
+<span class="kw">if</span> (rank == <span class="nm">0</span>) {
+    suma   = malloc(TAMA * <span class="kw">sizeof</span>(<span class="kw">int</span>));
+    maximo = malloc(TAMA * <span class="kw">sizeof</span>(<span class="kw">int</span>));
+}
+
+<span class="fn">MPI_Reduce</span>(mis_datos, suma,   TAMA, MPI_INT, MPI_SUM, <span class="nm">0</span>, MPI_COMM_WORLD);
+<span class="fn">MPI_Reduce</span>(mis_datos, maximo, TAMA, MPI_INT, MPI_MAX, <span class="nm">0</span>, MPI_COMM_WORLD);
+
+<span class="kw">if</span> (rank == <span class="nm">0</span>) {
+    printf(<span class="st">"Sumas: "</span>);   escribe(suma,   TAMA);
+    printf(<span class="st">"Máximos: "</span>); escribe(maximo, TAMA);
+    free(suma); free(maximo);
+}</code></pre>
+
+    <p>Con los arrays del PDF (0..9 en P0, 10000..10009 en P1, 20000..20009 en P2), el máximo posición por posición es el array del proceso con rank mayor: 20000, 20001, …, 20009.</p>
+
+    <h3>Ejercicio 4 (opcional) · <code>MPI_Type_create_struct</code></h3>
+    <p><strong>Enunciado:</strong> completar el código de la pág. 36 del PDF para que sea ejecutable, comprobando que el tipo derivado se construye correctamente y los procesos reciben los datos por broadcast.</p>
+
+<pre><code><span class="pr">#include</span> <span class="st">&lt;mpi.h&gt;</span>
+<span class="pr">#include</span> <span class="st">&lt;stdio.h&gt;</span>
+
+<span class="kw">typedef</span> <span class="kw">struct</span> { <span class="kw">float</span> a, b; <span class="kw">int</span> n; } INDATA_TYPE;
+
+<span class="kw">void</span> Build_derived_type(INDATA_TYPE *indata, MPI_Datatype *new_type) {
+    <span class="kw">int</span>          bl[<span class="nm">3</span>]   = { <span class="nm">1</span>, <span class="nm">1</span>, <span class="nm">1</span> };
+    MPI_Aint     disp[<span class="nm">3</span>], addr[<span class="nm">4</span>];
+    MPI_Datatype tl[<span class="nm">3</span>]   = { MPI_FLOAT, MPI_FLOAT, MPI_INT };
+
+    <span class="fn">MPI_Get_address</span>(indata,        &amp;addr[<span class="nm">0</span>]);
+    <span class="fn">MPI_Get_address</span>(&amp;(indata-&gt;a), &amp;addr[<span class="nm">1</span>]);
+    <span class="fn">MPI_Get_address</span>(&amp;(indata-&gt;b), &amp;addr[<span class="nm">2</span>]);
+    <span class="fn">MPI_Get_address</span>(&amp;(indata-&gt;n), &amp;addr[<span class="nm">3</span>]);
+    disp[<span class="nm">0</span>] = addr[<span class="nm">1</span>] - addr[<span class="nm">0</span>];
+    disp[<span class="nm">1</span>] = addr[<span class="nm">2</span>] - addr[<span class="nm">0</span>];
+    disp[<span class="nm">2</span>] = addr[<span class="nm">3</span>] - addr[<span class="nm">0</span>];
+
+    <span class="fn">MPI_Type_create_struct</span>(<span class="nm">3</span>, bl, disp, tl, new_type);
+    <span class="fn">MPI_Type_commit</span>(new_type);
+}
+
+<span class="kw">int</span> main(<span class="kw">int</span> argc, <span class="kw">char</span> **argv) {
+    <span class="fn">MPI_Init</span>(&amp;argc, &amp;argv);
+    <span class="kw">int</span> rank;
+    <span class="fn">MPI_Comm_rank</span>(MPI_COMM_WORLD, &amp;rank);
+
+    INDATA_TYPE datos;
+    <span class="kw">if</span> (rank == <span class="nm">0</span>) {
+        printf(<span class="st">"Enter a, b, n\n"</span>);
+        scanf(<span class="st">"%f %f %d"</span>, &amp;datos.a, &amp;datos.b, &amp;datos.n);
+    }
+
+    MPI_Datatype tipo;
+    Build_derived_type(&amp;datos, &amp;tipo);
+    <span class="fn">MPI_Bcast</span>(&amp;datos, <span class="nm">1</span>, tipo, <span class="nm">0</span>, MPI_COMM_WORLD);
+    <span class="fn">MPI_Type_free</span>(&amp;tipo);
+
+    <span class="kw">if</span> (rank != <span class="nm">0</span>)
+        printf(<span class="st">"P%d: a=%f b=%f n=%d\n"</span>, rank, datos.a, datos.b, datos.n);
+
+    <span class="fn">MPI_Finalize</span>();
+    <span class="kw">return</span> <span class="nm">0</span>;
+}</code></pre>
+
+    <p><strong>Punto crítico</strong>: si el proceso 0 construye el tipo derivado <em>después</em> de leer los datos, y los demás <em>antes</em> de recibir, el resultado es el mismo —los desplazamientos solo dependen de la disposición de la estructura, no de los valores—. Pero cada proceso debe construir su tipo (es local), y todos deben hacer commit antes de la primera comunicación con él.</p>
+  </section>
+
+  <section>
+    <h2>Errores frecuentes (y cómo detectarlos)</h2>
+    <table>
+      <tr><th>Síntoma</th><th>Causa probable</th><th>Diagnóstico</th></tr>
+      <tr>
+        <td>El programa se cuelga al lanzar</td>
+        <td>Una colectiva la llaman solo algunos procesos; o deadlock por <code>Ssend</code> recíproco</td>
+        <td>Asegúrate de que <em>todos</em> los procesos del comunicador invocan la colectiva. Para p2p, usa <code>Sendrecv</code> o no bloqueantes.</td>
+      </tr>
+      <tr>
+        <td>Funciona con N procesos pequeño y falla al subir</td>
+        <td><code>MPI_Send</code> «estándar» con mensajes que dejan de caber en buffer interno</td>
+        <td>Sustituir por <code>Ssend</code> + asimetría, o por <code>Sendrecv</code>, o por no bloqueantes.</td>
+      </tr>
+      <tr>
+        <td>Recibe un mensaje truncado o ruido</td>
+        <td>El <code>count</code> o el <code>datatype</code> del recv no coincide con el send</td>
+        <td>Verifica los tres parámetros (buf, count, type) en ambos extremos. Recibe puede aceptar menos que el envío, no más.</td>
+      </tr>
+      <tr>
+        <td>El resultado de una reducción es siempre del rank 0</td>
+        <td>Olvidaste que <code>MPI_Reduce</code> deja el resultado solo en root</td>
+        <td>Usa <code>MPI_Allreduce</code> si todos lo necesitan.</td>
+      </tr>
+      <tr>
+        <td>Programa correcto pero muy lento</td>
+        <td>Muchos mensajes pequeños — domina t<sub>s</sub></td>
+        <td>Agrupa con array contiguo, tipo derivado o Pack/Unpack.</td>
+      </tr>
+      <tr>
+        <td>Mismo valor en todos los procesos pero esperabas distintos</td>
+        <td>Olvidaste el <code>scanf</code> dentro del <code>if (rank == 0)</code> y el <code>Bcast</code> posterior</td>
+        <td>Solo el 0 lee; los demás reciben por broadcast.</td>
+      </tr>
+    </table>
   </section>
 
   <div class="retrieval-section">
     <h2 style="counter-increment: none;">Práctica de recuperación</h2>
-    <p class="retrieval-intro">El examen del curso suele incluir preguntas concretas de sintaxis. Si te equivocas en una tarjeta, marca esa idea para revisar mañana —recordar tras un fallo refuerza más que repasar lo que ya sabes—.</p>
+    <p class="retrieval-intro">El examen del curso suele incluir preguntas concretas de sintaxis y de razonamiento sobre costes. Si te equivocas en una tarjeta, marca esa idea para revisar mañana —recordar tras un fallo refuerza más que repasar lo que ya sabes—.</p>
 
     <div class="flashcards">
       <div class="flashcard">
         <div class="question">¿Qué significa SPMD en el contexto de MPI?</div>
-        <div class="answer">Single Program, Multiple Data: un único ejecutable lanzado en N copias, cada una con su <code>rank</code>. Cada proceso decide qué hacer en función de ese identificador.</div>
+        <div class="answer">Single Program, Multiple Data: un único ejecutable lanzado en N copias, cada una con su <code>rank</code>. El comportamiento por proceso lo determina el código a partir del rank.</div>
       </div>
       <div class="flashcard">
         <div class="question">¿Cuáles son las cuatro funciones MPI de las que no puedes prescindir?</div>
-        <div class="answer"><code>MPI_Init</code>, <code>MPI_Comm_rank</code>, <code>MPI_Comm_size</code>, <code>MPI_Finalize</code>. Definen el «esqueleto» mínimo de cualquier programa MPI.</div>
+        <div class="answer"><code>MPI_Init</code>, <code>MPI_Comm_rank</code>, <code>MPI_Comm_size</code>, <code>MPI_Finalize</code>. Definen el esqueleto mínimo de cualquier programa MPI.</div>
       </div>
       <div class="flashcard">
-        <div class="question">Diferencia entre <code>MPI_Send</code> y <code>MPI_Ssend</code>.</div>
-        <div class="answer"><code>MPI_Send</code> es el envío estándar: la implementación decide si usa buffer o sincroniza con el receptor. <code>MPI_Ssend</code> obliga a sincronía: no retorna hasta que el receptor empieza a recibir. Es más predecible pero potencialmente más lento.</div>
+        <div class="question">Diferencia entre <code>MPI_Send</code>, <code>MPI_Ssend</code>, <code>MPI_Bsend</code> y <code>MPI_Rsend</code>.</div>
+        <div class="answer"><code>Ssend</code> sincroniza: retorna cuando el receptor empieza a recibir. <code>Bsend</code> copia a un buffer de usuario y retorna; necesita <code>Buffer_attach</code>. <code>Send</code> es estándar: la implementación elige entre los anteriores según el tamaño. <code>Rsend</code> asume que el <code>Recv</code> ya está activo (es el más rápido pero el más peligroso).</div>
       </div>
       <div class="flashcard">
         <div class="question">¿Para qué sirven <code>MPI_Isend</code> e <code>MPI_Wait</code>?</div>
-        <div class="answer">Para comunicación <strong>no bloqueante</strong>. <code>MPI_Isend</code> arranca el envío y devuelve enseguida un <code>MPI_Request</code>. Permite hacer otro cómputo mientras el mensaje viaja. <code>MPI_Wait</code> bloquea hasta que esa comunicación termina, haciendo el buffer seguro de reutilizar.</div>
+        <div class="answer">Para comunicación <strong>no bloqueante</strong>. <code>Isend</code> arranca el envío y devuelve enseguida un <code>MPI_Request</code>. Permite hacer otro cómputo mientras el mensaje viaja. <code>Wait</code> bloquea hasta que esa comunicación termina, haciendo el buffer seguro de reutilizar.</div>
       </div>
       <div class="flashcard">
         <div class="question">¿Qué hace <code>MPI_Reduce</code> y en qué se diferencia de <code>MPI_Allreduce</code>?</div>
-        <div class="answer"><code>MPI_Reduce</code> combina valores de todos los procesos en uno solo (con una operación: suma, max, min...) y deja el resultado en un <code>root</code> elegido. <code>MPI_Allreduce</code> hace lo mismo pero deja el resultado en <em>todos</em> los procesos. Internamente es más eficiente que <code>Reduce</code>+<code>Bcast</code>.</div>
+        <div class="answer"><code>Reduce</code> combina valores de todos los procesos en uno solo (suma, max, min…) y deja el resultado en un <code>root</code> elegido. <code>Allreduce</code> hace lo mismo pero deja el resultado en <em>todos</em> los procesos. Internamente es más eficiente que <code>Reduce</code>+<code>Bcast</code>.</div>
       </div>
       <div class="flashcard">
         <div class="question">El tiempo de mandar n datos es t<sub>com</sub> = t<sub>s</sub> + n·t<sub>w</sub>. ¿Qué consecuencia práctica tiene?</div>
-        <div class="answer">Que mandar muchos mensajes pequeños es muy ineficiente por el coste fijo t<sub>s</sub>. Conviene agrupar (usando tipos derivados, <code>MPI_Pack</code>, o estructuras propias) y mandar pocos mensajes grandes.</div>
+        <div class="answer">Que mandar muchos mensajes pequeños es muy ineficiente por el coste fijo t<sub>s</sub>. Conviene agrupar (con array contiguo, tipos derivados o <code>MPI_Pack</code>) y mandar pocos mensajes grandes. Pasar de k(t<sub>s</sub>+t<sub>w</sub>) a t<sub>s</sub>+k·t<sub>w</sub> ahorra (k−1) latencias.</div>
       </div>
       <div class="flashcard">
-        <div class="question">¿Qué es un <em>deadlock</em> en MPI y cómo se evita?</div>
-        <div class="answer">Situación en la que dos o más procesos se esperan mutuamente. Típicamente ocurre con <code>Ssend</code>/<code>Send</code> recíprocos. Se evita rompiendo la simetría (uno envía y el otro recibe primero), usando <code>MPI_Sendrecv</code> o usando no bloqueantes.</div>
+        <div class="question">¿Cuándo se manifiesta un deadlock por <code>Send</code>/<code>Recv</code> y cómo se evita?</div>
+        <div class="answer">Cuando dos procesos hacen <code>Ssend</code> mutuo antes de <code>Recv</code>: ambos esperan que el otro reciba primero. Con <code>Send</code> estándar puede parecer que funciona con mensajes pequeños y fallar al crecer. Soluciones: asimetría (uno envía, otro recibe primero), <code>MPI_Sendrecv</code>, o no bloqueantes.</div>
       </div>
       <div class="flashcard">
-        <div class="question">Repaso de la sesión 2: ¿qué ventaja tiene MPI sobre OpenMP?</div>
-        <div class="answer">Funciona en sistemas con memoria <strong>distribuida</strong> (clusters). OpenMP solo sirve dentro de un nodo con memoria compartida. MPI escala a miles de nodos sin tener que cambiar el modelo de programación.</div>
+        <div class="question">¿Qué hace <code>MPI_Sendrecv</code>?</div>
+        <div class="answer">Una llamada combinada: envía a un destino y recibe de una fuente en una sola operación, libre de deadlock. Los buffers de envío y recepción deben ser distintos.</div>
       </div>
       <div class="flashcard">
         <div class="question">Cómo enviar una columna de una matriz almacenada por filas (los elementos no son contiguos).</div>
-        <div class="answer">Tres opciones: (1) crear un <code>MPI_Datatype</code> con <code>MPI_Type_vector</code> que describa el stride; (2) copiar manualmente a un buffer contiguo antes de enviar; (3) usar <code>MPI_Pack</code>/<code>Unpack</code>.</div>
+        <div class="answer">Tres opciones: (1) construir un <code>MPI_Datatype</code> con <code>MPI_Type_vector</code> que describa el stride; (2) copiar manualmente a un buffer contiguo antes de enviar; (3) usar <code>MPI_Pack</code>/<code>Unpack</code>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué dos cosas tiene que hacer el programador con un tipo derivado antes de poder usarlo?</div>
+        <div class="answer">Construirlo (con <code>Type_contiguous</code>/<code>vector</code>/<code>indexed</code>/<code>create_struct</code>) y hacerle <code>MPI_Type_commit</code>. Al final del programa, conviene liberarlo con <code>MPI_Type_free</code>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué se usa <code>MPI_Get_address</code> en lugar del operador <code>&amp;</code> de C al construir un tipo derivado?</div>
+        <div class="answer">Porque MPI necesita representar direcciones con su propio tipo portable (<code>MPI_Aint</code>), que en algunos sistemas no coincide con un puntero estándar. <code>MPI_Get_address</code> garantiza que los desplazamientos calculados son válidos para MPI.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué hace <code>MPI_Comm_split(comm, color, key, &amp;new_comm)</code>?</div>
+        <div class="answer">Reparte los procesos del comunicador en sub-comunicadores: todos los procesos con el mismo <code>color</code> acaban juntos. La <code>key</code> ordena los ranks dentro del nuevo comunicador. Es colectiva sobre <code>comm</code>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Repaso de la sesión 2: ¿qué ventaja tiene MPI sobre OpenMP?</div>
+        <div class="answer">Funciona en sistemas con memoria <strong>distribuida</strong> (clusters). OpenMP solo sirve dentro de un nodo con memoria compartida. MPI escala a miles de nodos sin cambiar de modelo de programación, a cambio de hacer toda la comunicación explícita.</div>
       </div>
     </div>
   </div>
