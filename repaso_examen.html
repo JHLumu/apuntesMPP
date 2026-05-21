@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Repaso de examen — MPP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">REPASO · EXAMEN FINAL</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Repaso<br>de examen</h1>
+    <p class="session-subtitle">Síntesis del temario orientada al modelo de examen del curso: teoría imprescindible, test resuelto con razonamiento, ejercicios paso a paso y trampas frecuentes. Pensado para releer el día anterior.</p>
+  </header>
+
+  <section>
+    <h2>Cómo es el examen y cómo se aprueba</h2>
+
+    <div class="comparison">
+      <div class="col">
+        <h4>Parte 1 · Test</h4>
+        <p><strong>20 preguntas, 5 puntos.</strong> Cada acierto +0.25; cada fallo −0.083 (1/3 de un acierto); en blanco 0.</p>
+        <p>Estrategia: si dudas entre dos opciones, contesta; si no tienes ni idea, deja en blanco. El descuento penaliza tirar a ciegas pero recompensa los descartes razonados.</p>
+      </div>
+      <div class="col alt">
+        <h4>Parte 2 · Preguntas cortas</h4>
+        <p><strong>2 puntos.</strong> Conceptos generales (secciones críticas, MC vs MD, paralelismo síncrono…) con ejemplo breve.</p>
+        <p>Estrategia: una definición + un porqué + una línea de código o un caso de uso. No pretendas escribir una página por pregunta.</p>
+      </div>
+      <div class="col">
+        <h4>Parte 3 · Ejercicios</h4>
+        <p><strong>3 puntos.</strong> Programación paralela: OpenMP, MPI, manycores, esquemas algorítmicos.</p>
+        <p>Estrategia: la sintaxis viene en la <em>chuleta oficial</em>. Lo que se evalúa es elegir la construcción correcta y razonar el reparto del trabajo.</p>
+      </div>
+    </div>
+
+    <div class="key-concept">
+      <span class="label">DETALLE IMPORTANTE DEL ENUNCIADO</span>
+      <h3>Las cuatro opciones del test no son excluyentes</h3>
+      <p>El enunciado dice literalmente: «cada pregunta consta de <em>una sola</em> alternativa correcta, pero puede ocurrir que a) sea correcta, b) sea correcta, c) sea correcta, o <strong>d) Todas las respuestas son correctas</strong>». Léelo despacio: cuando aparece «todas las anteriores» o «ninguna», compruébalo de verdad.</p>
+    </div>
+
+    <h3>Qué traes y qué no</h3>
+    <ul>
+      <li><strong>Tienes</strong> en el examen: chuleta OpenMP 4.0 (directivas, cláusulas, funciones, variables de entorno), MPI Quick Reference (todas las funciones bloqueantes / no bloqueantes / colectivas / topologías), CUDA Quick Reference (cualificadores, gestión de memoria, lanzamiento de kernel).</li>
+      <li><strong>No traes</strong>: análisis de algoritmos (Amdahl, ts/tw, eficiencia), clasificación Flynn, metodología de Foster, los esquemas algorítmicos (paralelismo de datos, relajado, pipeline, DV, PD, trabajadores replicados).</li>
+    </ul>
+    <p>Conclusión práctica: <strong>memoriza los conceptos y los patrones; no la sintaxis</strong>. Esta página se centra en lo primero.</p>
+  </section>
+
+  <section>
+    <h2>Bloque I · Teoría imprescindible (no está en la chuleta)</h2>
+
+    <h3>1 · Clasificación de Flynn</h3>
+    <table>
+      <tr><th>Sigla</th><th>Significado</th><th>Ejemplos</th></tr>
+      <tr><td><strong>SISD</strong></td><td>Single Instruction, Single Data — máquina secuencial clásica</td><td>CPU monocore antigua</td></tr>
+      <tr><td><strong>SIMD</strong></td><td>Single Instruction, Multiple Data — una instrucción opera sobre varios datos a la vez</td><td>Unidades vectoriales (AVX, SSE), GPUs (SIMT, variante de SIMD), procesadores vectoriales</td></tr>
+      <tr><td><strong>MISD</strong></td><td>Multiple Instruction, Single Data — varias instrucciones sobre el mismo dato (categoría poco usada)</td><td>Sistemas tolerantes a fallos con redundancia</td></tr>
+      <tr><td><strong>MIMD</strong></td><td>Multiple Instruction, Multiple Data — cada elemento de proceso ejecuta su propio programa sobre sus datos</td><td>CPUs multicore, clusters, supercomputadores</td></tr>
+    </table>
+    <p>Variante práctica: <strong>SPMD</strong> (Single Program, Multiple Data) — sobre hardware MIMD se ejecuta el mismo binario por todos los procesos, cada uno decide qué hacer mirando su rank. Es lo que usa MPI.</p>
+
+    <h3>2 · Memoria compartida vs paso de mensajes</h3>
+    <table>
+      <tr><th></th><th>Memoria compartida (MC)</th><th>Paso de mensajes (MD)</th></tr>
+      <tr><td>Visión del programa</td><td>Procesos/hilos con una zona común de variables</td><td>Procesos con variables locales privadas</td></tr>
+      <tr><td>Comunicación</td><td>Implícita: leyendo y escribiendo variables compartidas</td><td>Explícita: <code>send</code> / <code>recv</code></td></tr>
+      <tr><td>Sincronización</td><td>Barreras, secciones críticas, llaves (locks)</td><td>Implícita en el propio mensaje</td></tr>
+      <tr><td>Escalabilidad</td><td>Limitada al nodo (contención de memoria)</td><td>Escala a clusters de miles de nodos</td></tr>
+      <tr><td>Modelo típico</td><td>OpenMP, Pthreads</td><td>MPI</td></tr>
+      <tr><td>Problemas característicos</td><td>Condiciones de carrera, falso compartido</td><td>Deadlocks, coste de comunicación</td></tr>
+    </table>
+
+    <h3>3 · Paralelismo síncrono vs asíncrono (relajado)</h3>
+    <ul>
+      <li><strong>Síncrono</strong>: todos los procesos avanzan al mismo ritmo, con sincronización tras cada paso (barreras). Modelo natural en SIMD y en problemas de <em>stencil</em>: ecuación del calor, Jacobi iterativo, simulaciones físicas con dependencia de datos del paso anterior. Garantiza determinismo y resultados reproducibles, pero el más lento marca el ritmo del conjunto.</li>
+      <li><strong>Relajado / asíncrono</strong>: no hay sincronización global; cada proceso usa los datos más recientes que tenga, aunque no sean los del último paso. Útil en optimización (Gauss-Seidel asíncrono, algoritmos heurísticos) y en computación irregular. Sacrifica reproducibilidad por velocidad.</li>
+    </ul>
+
+    <h3>4 · Secciones críticas y exclusión mutua</h3>
+    <p>Una <strong>sección crítica</strong> es una región de código que solo puede ejecutar <em>un</em> hilo/proceso a la vez. Necesaria cuando varios elementos de proceso acceden a la misma variable compartida y al menos uno escribe (<em>condición de carrera</em>).</p>
+    <p>Mecanismos: <code>#pragma omp critical</code> (OpenMP), <code>#pragma omp atomic</code> (para operaciones simples y mucho más rápida), llaves de librería (<code>omp_set_lock</code>), <code>MPI_Win_lock</code> en memoria compartida MPI. La <strong>cláusula <code>reduction</code></strong> evita la sección crítica explícita para acumulaciones: cada hilo opera sobre una copia y al final se combinan.</p>
+
+    <h3>5 · Análisis de algoritmos paralelos</h3>
+    <p>Fórmulas que <strong>tienes que saber</strong> porque no están en la chuleta:</p>
+    <table>
+      <tr><th>Magnitud</th><th>Fórmula</th><th>Qué dice</th></tr>
+      <tr><td>Speed-up</td><td>S(p) = T<sub>1</sub> / T<sub>p</sub></td><td>Cuántas veces más rápido es con p procesadores</td></tr>
+      <tr><td>Eficiencia</td><td>E(p) = S(p) / p</td><td>Aprovechamiento por procesador, ideal = 1</td></tr>
+      <tr><td><strong>Ley de Amdahl</strong></td><td>S(p) ≤ 1 / (s + (1 − s) / p)</td><td>Con fracción serie <em>s</em>, el speed-up está acotado. Si <em>s</em> = 0.05, máximo 20 incluso con ∞ procesadores.</td></tr>
+      <tr><td>Coste comunicación</td><td>t<sub>com</sub> = t<sub>s</sub> + n · t<sub>w</sub></td><td>Latencia t<sub>s</sub> + transferencia n datos a t<sub>w</sub> cada uno</td></tr>
+      <tr><td>Tiempo total paralelo</td><td>T<sub>p</sub> = t<sub>cómputo</sub> + t<sub>com</sub></td><td>El paralelismo solo gana si t<sub>cómputo</sub> domina</td></tr>
+    </table>
+
+    <h3>6 · Metodología de Foster (PCAM)</h3>
+    <p>Cuatro fases para diseñar un algoritmo paralelo, en orden:</p>
+    <ol>
+      <li><strong>Particionado</strong>: descomponer el problema en muchas tareas pequeñas (de datos o funcionales), sin pensar en arquitectura.</li>
+      <li><strong>Comunicación</strong>: identificar qué tareas dependen de qué otras y cómo se intercambian datos.</li>
+      <li><strong>Aglomeración</strong>: agrupar tareas pequeñas en bloques mayores para reducir overhead, manteniendo el paralelismo suficiente.</li>
+      <li><strong>Mapeo</strong>: asignar cada aglomerado a un procesador físico, buscando balance de carga.</li>
+    </ol>
+
+    <h3>7 · Esquemas algorítmicos del bloque IV</h3>
+    <table>
+      <tr><th>Esquema</th><th>Idea</th><th>Ejemplo típico</th></tr>
+      <tr><td><strong>Paralelismo de datos</strong></td><td>Mismo trabajo sobre datos distintos</td><td>Suma de vectores, producto matriz-vector, SAXPY</td></tr>
+      <tr><td><strong>Síncrono</strong></td><td>Pasos sincronizados por barrera global</td><td>Jacobi iterativo, stencils</td></tr>
+      <tr><td><strong>Relajado</strong></td><td>Sin barreras; cada uno usa lo que tiene</td><td>Gauss-Seidel asíncrono, metaheurísticas</td></tr>
+      <tr><td><strong>Grafo de dependencias</strong></td><td>Tareas con dependencias arbitrarias</td><td>Árbol de reducción, DAG</td></tr>
+      <tr><td><strong>Pipeline (segmentación)</strong></td><td>Etapas en cascada; cada una procesa y pasa al siguiente</td><td>Filtrado de señal, compiladores</td></tr>
+      <tr><td><strong>Divide y vencerás (DV)</strong></td><td>Subdividir, resolver recursivo, combinar</td><td>Quicksort, mergesort, FFT — natural con <code>task</code></td></tr>
+      <tr><td><strong>Programación dinámica (PD)</strong></td><td>Tabla con dependencias entre celdas</td><td>Floyd-Warshall, alineamiento de secuencias</td></tr>
+      <tr><td><strong>Trabajadores replicados</strong></td><td>Bolsa común de tareas; cada worker coge una al terminar</td><td>Backtracking, branch &amp; bound, ray tracing</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Bloque II · Test del examen modelo, resuelto</h2>
+    <p>Las cinco primeras preguntas tipo test del examen ejemplo. Razonamos cada alternativa para que el patrón sea reproducible.</p>
+
+    <div class="quiz-section">
+      <div class="quiz-q answered">
+        <span class="qnum">1</span>
+        <p class="qtext">¿Qué imprime / ejecuta este código con OpenMP?</p>
+<pre><code><span class="kw">double</span> array[<span class="nm">100</span>];
+<span class="kw">int</span> i;
+omp_set_num_threads(X);
+<span class="pr">#pragma omp parallel</span> private(i)
+<span class="kw">for</span> (i = <span class="nm">0</span>; i &lt; <span class="nm">100</span>; i++)
+    array[i] = sin(i);</code></pre>
+        <ul class="options">
+          <li class="opt">A. Con X=4, el trabajo acumulado es 100 iteraciones.</li>
+          <li class="opt">B. Con X=10, el programa fallará en un procesador con 4 cores.</li>
+          <li class="opt">C. Con 5 hilos, cada uno ejecuta 20 iteraciones.</li>
+          <li class="opt correct">D. Todas las anteriores son falsas. ✓</li>
+        </ul>
+        <div class="explain">
+          <strong>Trampa clave</strong>: no hay <code>#pragma omp for</code>, solo <code>parallel</code>. Cada hilo ejecuta el <em>bucle entero</em> de 100 iteraciones.
+          <ul>
+            <li>A · falsa: con 4 hilos el trabajo total es 4 × 100 = 400 iteraciones (ineficiente, además todos escriben en <code>array[i]</code> simultáneamente — race condition).</li>
+            <li>B · falsa: lanzar 10 hilos en 4 cores no falla; el SO los planifica time-sharing. Solo será más lento o equivalente.</li>
+            <li>C · falsa: precisamente porque no hay <code>for</code>, cada hilo hace las 100 iteraciones, no 20. Si tuviera <code>parallel for</code> sí sería cierto.</li>
+          </ul>
+          Recuerda: <code>parallel</code> crea el equipo, <code>for</code> reparte. Olvidar el <code>for</code> es uno de los errores OpenMP más típicos.
+        </div>
+      </div>
+
+      <div class="quiz-q answered">
+        <span class="qnum">2</span>
+        <p class="qtext">¿Cuál es la afirmación correcta sobre este código?</p>
+<pre><code><span class="kw">double</span> *data = ...;
+omp_set_num_threads(<span class="nm">2</span>);
+<span class="pr">#pragma omp parallel for</span> private(i, j)
+<span class="kw">for</span> (i = <span class="nm">0</span>; i &lt; <span class="nm">5000</span>; i++) {
+    <span class="kw">int</span> n = omp_get_thread_num();
+    <span class="kw">for</span> (j = <span class="nm">0</span>; j &lt; <span class="nm">1000</span>; j++)
+        data[j] += calcular(n);
+}</code></pre>
+        <ul class="options">
+          <li class="opt">A. Es incorrecto y no se puede arreglar por la dependencia en <code>data[j]</code>.</li>
+          <li class="opt">B. Es incorrecto, pero se arregla con <code>#pragma omp lock</code>.</li>
+          <li class="opt correct">C. Es incorrecto, pero se arregla con <code>#pragma omp critical</code> en la línea 6. ✓</li>
+          <li class="opt">D. Es correcto.</li>
+        </ul>
+        <div class="explain">
+          <strong>Diagnóstico</strong>: el bucle exterior se paraleliza, pero todos los hilos escriben en las mismas posiciones <code>data[0..999]</code> → condición de carrera. La solución es proteger la actualización.
+          <ul>
+            <li>A · falsa: sí se puede arreglar (con critical, atomic o reduction).</li>
+            <li>B · falsa: <code>#pragma omp lock</code> <em>no existe</em>. Hay funciones de librería <code>omp_set_lock</code>/<code>omp_unset_lock</code>, pero no una directiva con ese nombre.</li>
+            <li>C · correcta: encerrar <code>data[j] += calcular(n)</code> en <code>#pragma omp critical</code> serializa la escritura. Más rápido sería <code>#pragma omp atomic</code> (operación simple) o repensar el algoritmo.</li>
+            <li>D · falsa: hay race condition, los resultados son no deterministas.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="quiz-q answered">
+        <span class="qnum">3</span>
+        <p class="qtext">Programa con 100 instrucciones, 95 paralelizables, 4 procesadores. ¿Speed-up máximo (Amdahl)?</p>
+        <ul class="options">
+          <li class="opt">A. 4</li>
+          <li class="opt correct">B. 3.478 ✓</li>
+          <li class="opt">C. 3.25</li>
+          <li class="opt">D. 2</li>
+        </ul>
+        <div class="explain">
+          <strong>Aplicación directa de Amdahl</strong>: S(p) = 1 / (s + (1 − s) / p) con s = 0.05 (5/100 instrucciones serie), p = 4:
+          <pre style="margin-top:0.5rem">S(4) = 1 / (0.05 + 0.95 / 4) = 1 / (0.05 + 0.2375) = 1 / 0.2875 ≈ 3.478</pre>
+          <ul>
+            <li>A · falsa: el speed-up ideal con 4 procesadores sería 4, pero solo si todo el código es paralelo (s = 0). Aquí hay 5% serie que limita.</li>
+            <li>C · falsa: confusión típica si se calcula 95% × 4 / (algo). No es la fórmula correcta.</li>
+            <li>D · falsa: pesimista de más.</li>
+          </ul>
+          <strong>Truco para mentalizar</strong>: incluso con p = ∞, S<sub>máx</sub> = 1/s = 1/0.05 = 20. Un 5% serie limita a un máximo de 20×.
+        </div>
+      </div>
+
+      <div class="quiz-q answered">
+        <span class="qnum">4</span>
+        <p class="qtext">Mergesort paralelo en OpenMP con esquema Divide y Vencerás:</p>
+        <ul class="options">
+          <li class="opt">A. Se puede tanto con <code>parallel for</code> (en hilos) como con <code>task</code>.</li>
+          <li class="opt">B. Se puede con Programación Dinámica en hilos pero no en tareas.</li>
+          <li class="opt">C. Se puede con DV en tareas pero no en hilos.</li>
+          <li class="opt correct">D. Ninguna de las anteriores es correcta. ✓</li>
+        </ul>
+        <div class="explain">
+          <strong>Razonamiento</strong>:
+          <ul>
+            <li>A · falsa: mergesort es recursivo, no es un bucle plano. <code>parallel for</code> no encaja. En hilos lo natural sería <code>sections</code>, no <code>for</code>. Por eso A es incorrecta tal y como está enunciada.</li>
+            <li>B · falsa: mergesort es <em>Divide y Vencerás</em>, no Programación Dinámica. PD se aplica a problemas con subproblemas solapados.</li>
+            <li>C · falsa: sí se puede con hilos (usando <code>sections</code> para las dos llamadas recursivas en cada nivel). Es menos elegante que <code>task</code> y solo paraleliza los primeros niveles, pero <em>funciona</em>.</li>
+            <li>D · correcta: ninguna afirmación es válida tal como se redactó.</li>
+          </ul>
+          <strong>Idea para recordar</strong>: DV recursivo + OpenMP = <code>task</code>. Sections sirve para paralelismo funcional fijo (dos o tres ramas conocidas), no para recursión irregular. PD se ataca con paralelismo de datos sobre la tabla.
+        </div>
+      </div>
+
+      <div class="quiz-q answered">
+        <span class="qnum">5</span>
+        <p class="qtext">Sobre la clasificación de Flynn:</p>
+        <ul class="options">
+          <li class="opt">A. Las CPU multinúcleo son SISD.</li>
+          <li class="opt correct">B. El modelo SIMD es adecuado para el paralelismo de datos. ✓</li>
+          <li class="opt">C. Las GPU son MISD.</li>
+          <li class="opt">D. Ninguna de las anteriores son ciertas.</li>
+        </ul>
+        <div class="explain">
+          <ul>
+            <li>A · falsa: multinúcleo son MIMD — cada core puede ejecutar instrucciones distintas sobre datos distintos.</li>
+            <li>B · correcta: SIMD = Single Instruction Multiple Data → exactamente el paralelismo de datos (misma operación sobre muchos elementos).</li>
+            <li>C · falsa: las GPU son SIMD/SIMT (Single Instruction Multiple Thread, una variante de SIMD). MISD es la categoría rara, casi inexistente.</li>
+            <li>D · falsa: B sí es cierta, así que «ninguna» es falso.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Bloque III · Preguntas cortas resueltas</h2>
+
+    <h3>1 · ¿Para qué y cuándo son necesarias las secciones críticas? Ejemplo de uso.</h3>
+    <p>Una sección crítica es una región de código que solo puede ejecutar <strong>un hilo o proceso a la vez</strong>. Son necesarias cuando varios elementos de proceso comparten una variable y al menos uno la modifica: sin protección habría <em>condiciones de carrera</em> (resultados no deterministas, dependientes del orden temporal de los accesos).</p>
+    <p>Ejemplo en OpenMP: contar elementos que cumplen un predicado.</p>
+<pre><code><span class="kw">int</span> contador = <span class="nm">0</span>;
+<span class="pr">#pragma omp parallel for</span>
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++) {
+    <span class="kw">if</span> (cumple(v[i])) {
+        <span class="pr">#pragma omp critical</span>
+        contador++;
+    }
+}</code></pre>
+    <p>Para esta operación tan simple, <code>#pragma omp atomic</code> sería más rápido. Y aún mejor sería <code>reduction(+: contador)</code>, que evita por completo la sincronización: cada hilo cuenta en su copia local y se combinan al final.</p>
+
+    <h3>2 · ¿Qué diferencia hay entre un sistema de paso de mensajes y uno de memoria compartida?</h3>
+    <ul>
+      <li><strong>Memoria compartida</strong>: los procesos/hilos comparten un mismo espacio de direcciones. Se comunican leyendo y escribiendo variables comunes (comunicación implícita). Necesitan primitivas de sincronización (secciones críticas, barreras, locks) para evitar condiciones de carrera. Limitado a la memoria física de un nodo. Modelo: OpenMP, Pthreads.</li>
+      <li><strong>Paso de mensajes</strong>: cada proceso tiene su propia memoria local privada. La comunicación es <em>explícita</em> mediante operaciones <code>send</code> / <code>recv</code>. No hay condiciones de carrera (cada uno gestiona su memoria), pero hay coste de comunicación y posibles deadlocks. Escala a clusters con miles de nodos. Modelo: MPI.</li>
+    </ul>
+    <p>La <strong>programación híbrida</strong> (sesión 5) combina ambos: procesos MPI entre nodos, hilos OpenMP dentro de cada nodo.</p>
+
+    <h3>3 · Explica el paralelismo síncrono: ideas principales y ejemplo.</h3>
+    <p><strong>Paralelismo síncrono</strong>: todos los elementos de proceso avanzan al mismo ritmo, sincronizándose en puntos predefinidos (barreras). Cada paso (o iteración) usa los resultados del paso anterior y solo del anterior. El más lento marca el ritmo.</p>
+    <p>Ideas clave:</p>
+    <ul>
+      <li>Barreras explícitas o implícitas tras cada fase.</li>
+      <li>Determinismo: el resultado no depende del orden temporal de ejecución, solo del orden lógico.</li>
+      <li>Suele requerir <em>doble buffer</em>: una matriz con los valores del paso k y otra con los del paso k+1, para evitar leer datos parcialmente actualizados.</li>
+    </ul>
+    <p><strong>Ejemplo canónico</strong>: ecuación del calor en 2D por diferencias finitas (Jacobi).</p>
+<pre><code><span class="kw">for</span> (paso = <span class="nm">0</span>; paso &lt; T; paso++) {
+    <span class="pr">#pragma omp parallel for</span> collapse(<span class="nm">2</span>)
+    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">1</span>; i &lt; N-<span class="nm">1</span>; i++)
+        <span class="kw">for</span> (<span class="kw">int</span> j = <span class="nm">1</span>; j &lt; N-<span class="nm">1</span>; j++)
+            nuevo[i][j] = <span class="nm">0.25</span> * (viejo[i-<span class="nm">1</span>][j] + viejo[i+<span class="nm">1</span>][j]
+                              + viejo[i][j-<span class="nm">1</span>] + viejo[i][j+<span class="nm">1</span>]);
+
+    <span class="cm">// Barrera implícita del parallel for</span>
+    intercambiar(&amp;viejo, &amp;nuevo);
+}</code></pre>
+    <p>Cada paso temporal calcula <code>nuevo</code> a partir solo de <code>viejo</code>; sin la barrera, un hilo rápido sobrescribiría datos que otro hilo lento aún necesita leer.</p>
+    <p>El contrapunto es el <strong>paralelismo relajado</strong> (Gauss-Seidel asíncrono): cada hilo usa los valores más recientes que encuentre, sin esperar. Converge igual pero más rápido en problemas regulares, a cambio de perder determinismo.</p>
+  </section>
+
+  <section>
+    <h2>Bloque IV · Ejercicios prácticos resueltos</h2>
+
+    <h3>Ejercicio 1 · OpenMP — paralelizar bucle 2D y analizar coste</h3>
+    <p><strong>Enunciado</strong>: escalar cada elemento de una matriz <code>a[N][M]</code> por 0.5, en (1) paralelismo implícito sobre array unidimensional, (2) paralelismo explícito. Indicar el coste con p hilos.</p>
+
+    <p><strong>(1) Paralelismo implícito sobre array 1D</strong>:</p>
+<pre><code><span class="kw">double</span> *a = malloc(N * M * <span class="kw">sizeof</span>(<span class="kw">double</span>));   <span class="cm">// almacenamiento contiguo</span>
+<span class="cm">// ... inicialización ...</span>
+
+<span class="pr">#pragma omp parallel for</span> schedule(<span class="kw">static</span>)
+<span class="kw">for</span> (<span class="kw">int</span> idx = <span class="nm">0</span>; idx &lt; N * M; idx++)
+    a[idx] *= <span class="nm">0.5</span>;</code></pre>
+    <p><strong>Por qué 1D</strong>: una matriz declarada como <code>double **a</code> es un array de punteros a filas (no contigua). Pasarla a 1D <code>double *a</code> con indexado <code>i*M + j</code> permite recorrerla como un solo bloque, optimiza el uso de caché y deja que el compilador vectorice. Es el patrón natural para librerías como BLAS y para enviar la matriz entera con un único <code>MPI_Send</code>.</p>
+
+    <p><strong>Coste</strong>: la operación <code>a[idx] *= 0.5</code> es O(1) por elemento; hay N·M elementos. Con p hilos sin comunicación:</p>
+    <table>
+      <tr><th>Magnitud</th><th>Expresión</th></tr>
+      <tr><td>Tiempo secuencial</td><td>T<sub>1</sub> = N · M · t<sub>op</sub></td></tr>
+      <tr><td>Tiempo paralelo</td><td>T<sub>p</sub> = (N · M / p) · t<sub>op</sub> + t<sub>overhead</sub></td></tr>
+      <tr><td>Speed-up ideal</td><td>S(p) ≈ p (operación independiente, sin sincronización entre hilos)</td></tr>
+      <tr><td>Eficiencia</td><td>E(p) ≈ 1</td></tr>
+    </table>
+    <p>Es paralelismo de datos puro: el caso de manual para escalar bien.</p>
+
+    <p><strong>(2) Paralelismo explícito</strong>:</p>
+<pre><code><span class="pr">#pragma omp parallel</span>
+{
+    <span class="kw">int</span> tid    = omp_get_thread_num();
+    <span class="kw">int</span> nth    = omp_get_num_threads();
+    <span class="kw">int</span> total  = N * M;
+    <span class="kw">int</span> chunk  = (total + nth - <span class="nm">1</span>) / nth;     <span class="cm">// redondeo hacia arriba</span>
+    <span class="kw">int</span> ini    = tid * chunk;
+    <span class="kw">int</span> fin    = (ini + chunk &lt; total) ? ini + chunk : total;
+
+    <span class="kw">for</span> (<span class="kw">int</span> idx = ini; idx &lt; fin; idx++)
+        a[idx] *= <span class="nm">0.5</span>;
+}</code></pre>
+    <p>Aquí <em>el programador</em> calcula los rangos. Equivalente a <code>schedule(static)</code> implícito. La diferencia con (1) es pedagógica: en explícito ves quién hace qué; en implícito confías en el runtime de OpenMP.</p>
+
+    <h3>Ejercicio 2 · MPI — cálculo de π en paralelo</h3>
+    <p><strong>Enunciado</strong>: paralelizar con MPI el cálculo de π por la regla del rectángulo.</p>
+    <p>Idea: cada proceso suma las iteraciones que le tocan (reparto cíclico o por bloques) y al final se reducen las sumas parciales con <code>MPI_Reduce</code>.</p>
+
+<pre><code><span class="pr">#include</span> <span class="st">&lt;mpi.h&gt;</span>
+<span class="pr">#include</span> <span class="st">&lt;stdio.h&gt;</span>
+<span class="pr">#include</span> <span class="st">&lt;math.h&gt;</span>
+
+<span class="kw">double</span> f(<span class="kw">double</span> a) { <span class="kw">return</span> <span class="nm">4.0</span> / (<span class="nm">1.0</span> + a * a); }
+
+<span class="kw">int</span> main(<span class="kw">int</span> argc, <span class="kw">char</span> *argv[]) {
+    <span class="kw">int</span> rank, nproc, n = <span class="nm">100</span>, i;
+    <span class="kw">double</span> h, local_sum = <span class="nm">0.0</span>, total_sum, pi, x;
+    <span class="kw">const double</span> PI25DT = <span class="nm">3.141592653589793</span>;
+
+    <span class="fn">MPI_Init</span>(&amp;argc, &amp;argv);
+    <span class="fn">MPI_Comm_rank</span>(MPI_COMM_WORLD, &amp;rank);
+    <span class="fn">MPI_Comm_size</span>(MPI_COMM_WORLD, &amp;nproc);
+
+    <span class="cm">// El proceso 0 distribuye n (en este caso es constante; en general por Bcast)</span>
+    <span class="fn">MPI_Bcast</span>(&amp;n, <span class="nm">1</span>, MPI_INT, <span class="nm">0</span>, MPI_COMM_WORLD);
+    h = <span class="nm">1.0</span> / (<span class="kw">double</span>) n;
+
+    <span class="cm">// Reparto cíclico: el proceso k coge i = k+1, k+1+nproc, k+1+2*nproc...</span>
+    <span class="kw">for</span> (i = rank + <span class="nm">1</span>; i &lt;= n; i += nproc) {
+        x = h * ((<span class="kw">double</span>) i - <span class="nm">0.5</span>);
+        local_sum += f(x);
+    }
+
+    <span class="cm">// Reducción al proceso 0</span>
+    <span class="fn">MPI_Reduce</span>(&amp;local_sum, &amp;total_sum, <span class="nm">1</span>, MPI_DOUBLE,
+               MPI_SUM, <span class="nm">0</span>, MPI_COMM_WORLD);
+
+    <span class="kw">if</span> (rank == <span class="nm">0</span>) {
+        pi = h * total_sum;
+        printf(<span class="st">"pi ≈ %.16f, error = %.16f\n"</span>,
+               pi, fabs(pi - PI25DT));
+    }
+
+    <span class="fn">MPI_Finalize</span>();
+    <span class="kw">return</span> <span class="nm">0</span>;
+}</code></pre>
+
+    <p><strong>Comentarios para argumentar en el examen</strong>:</p>
+    <ul>
+      <li><strong>Reparto cíclico</strong> en lugar de por bloques contiguos: balanceo perfecto cuando n no es múltiplo de nproc. Si fuera por bloques se podría usar <code>local_n = n / nproc</code> y trozos contiguos.</li>
+      <li><strong>MPI_Reduce</strong> en lugar de un bucle <code>Recv</code> + suma: usa árbol logarítmico, mucho más eficiente y conciso.</li>
+      <li><strong>Solo el root imprime</strong>: el resultado total solo lo tiene el proceso 0 tras <code>MPI_Reduce</code>. Si todos lo necesitaran, sería <code>MPI_Allreduce</code>.</li>
+      <li><strong>Coste de comunicaciones</strong>: 1 <code>Bcast</code> de un entero + 1 <code>Reduce</code> de un double. Ambas O(log p). Despreciable comparado con el cómputo si n es grande.</li>
+    </ul>
+
+    <h3>Ejercicio 3 · Pipeline de 3 etapas (paso de mensajes)</h3>
+    <p><strong>Enunciado</strong>: pseudocódigo con paso de mensajes para un pipeline que procesa <code>a[n]</code>: etapa 1 filtra impares, etapa 2 multiplica por 2, etapa 3 imprime.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 720 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pipeline de 3 etapas">
+        <style>
+          .pl-box  { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.5; }
+          .pl-data { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1; }
+          .pl-t    { font: 600 12px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .pl-ts   { font: 500 10px 'JetBrains Mono', monospace; fill: #1a1a1a; text-anchor: middle; }
+          .pl-arr  { stroke: #c5410f; stroke-width: 2; fill: none; marker-end: url(#pl-h); }
+          .pl-lbl  { font: italic 600 11px 'Fraunces', serif; fill: #c5410f; text-anchor: middle; }
+        </style>
+        <defs>
+          <marker id="pl-h" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <rect class="pl-data" x="20" y="40" width="80" height="40" rx="3"/>
+        <text class="pl-ts" x="60" y="58">array a[n]</text>
+        <text class="pl-ts" x="60" y="73">(en P0)</text>
+
+        <path class="pl-arr" d="M 100 60 L 145 60"/>
+
+        <rect class="pl-box" x="150" y="30" width="130" height="60" rx="3"/>
+        <text class="pl-t" x="215" y="50">Etapa 1 · P0</text>
+        <text class="pl-ts" x="215" y="68">filtra impares</text>
+        <text class="pl-ts" x="215" y="82">Send(x → P1)</text>
+
+        <path class="pl-arr" d="M 280 60 L 320 60"/>
+        <text class="pl-lbl" x="300" y="50">x</text>
+
+        <rect class="pl-box" x="325" y="30" width="130" height="60" rx="3"/>
+        <text class="pl-t" x="390" y="50">Etapa 2 · P1</text>
+        <text class="pl-ts" x="390" y="68">Recv(x); x *= 2</text>
+        <text class="pl-ts" x="390" y="82">Send(x → P2)</text>
+
+        <path class="pl-arr" d="M 455 60 L 495 60"/>
+        <text class="pl-lbl" x="475" y="50">2x</text>
+
+        <rect class="pl-box" x="500" y="30" width="130" height="60" rx="3"/>
+        <text class="pl-t" x="565" y="50">Etapa 3 · P2</text>
+        <text class="pl-ts" x="565" y="68">Recv(x)</text>
+        <text class="pl-ts" x="565" y="82">imprime x</text>
+
+        <text class="pl-lbl" x="360" y="115">3 procesos en cascada · solapamiento si llega un flujo continuo de datos</text>
+      </svg>
+      <p class="caption">Tres procesos, dos canales de comunicación. Mientras P1 procesa el dato k, P0 ya puede mandar el k+1 y P2 imprimir el k−1. Si las tres etapas son del mismo coste, hay paralelismo real ≈ 3.</p>
+    </div>
+
+<pre><code><span class="cm">// Constante centinela para indicar fin de flujo</span>
+<span class="pr">#define</span> FIN -<span class="nm">1</span>
+
+<span class="cm">// ============ PROCESO 0 (etapa 1: filtrar impares) ============</span>
+<span class="kw">if</span> (rank == <span class="nm">0</span>) {
+    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++)
+        <span class="kw">if</span> (a[i] % <span class="nm">2</span> != <span class="nm">0</span>)
+            <span class="fn">MPI_Send</span>(&amp;a[i], <span class="nm">1</span>, MPI_INT, <span class="nm">1</span>, TAG, MPI_COMM_WORLD);
+
+    <span class="kw">int</span> fin = FIN;                                <span class="cm">// señaliza fin</span>
+    <span class="fn">MPI_Send</span>(&amp;fin, <span class="nm">1</span>, MPI_INT, <span class="nm">1</span>, TAG, MPI_COMM_WORLD);
+}
+
+<span class="cm">// ============ PROCESO 1 (etapa 2: multiplicar por 2) ============</span>
+<span class="kw">if</span> (rank == <span class="nm">1</span>) {
+    <span class="kw">int</span> x;
+    <span class="kw">while</span> (<span class="nm">1</span>) {
+        <span class="fn">MPI_Recv</span>(&amp;x, <span class="nm">1</span>, MPI_INT, <span class="nm">0</span>, TAG,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        <span class="kw">if</span> (x == FIN) {
+            <span class="fn">MPI_Send</span>(&amp;x, <span class="nm">1</span>, MPI_INT, <span class="nm">2</span>, TAG, MPI_COMM_WORLD);
+            <span class="kw">break</span>;
+        }
+        x *= <span class="nm">2</span>;
+        <span class="fn">MPI_Send</span>(&amp;x, <span class="nm">1</span>, MPI_INT, <span class="nm">2</span>, TAG, MPI_COMM_WORLD);
+    }
+}
+
+<span class="cm">// ============ PROCESO 2 (etapa 3: imprimir) ============</span>
+<span class="kw">if</span> (rank == <span class="nm">2</span>) {
+    <span class="kw">int</span> x;
+    <span class="kw">while</span> (<span class="nm">1</span>) {
+        <span class="fn">MPI_Recv</span>(&amp;x, <span class="nm">1</span>, MPI_INT, <span class="nm">1</span>, TAG,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        <span class="kw">if</span> (x == FIN) <span class="kw">break</span>;
+        printf(<span class="st">"%d\n"</span>, x);
+    }
+}</code></pre>
+
+    <p><strong>Razonamiento clave para el examen</strong>:</p>
+    <ul>
+      <li><strong>El centinela FIN</strong> es el patrón estándar para terminar un pipeline: cuando el flujo se acaba, cada etapa propaga el FIN a la siguiente y termina.</li>
+      <li><strong>Las comunicaciones son punto a punto y bloqueantes</strong>: <code>MPI_Send</code> / <code>MPI_Recv</code>. En un pipeline real conviene no bloqueantes (<code>MPI_Isend</code>) para solapar comunicación con cómputo, pero el pseudocódigo se entiende mejor con bloqueantes.</li>
+      <li><strong>Solapamiento</strong>: si el flujo es continuo, las 3 etapas trabajan a la vez. Aceleración ideal con r etapas: × r en régimen permanente. Las 2 primeras y 2 últimas iteraciones son fases transitorias (no todas las etapas activas).</li>
+      <li><strong>Cuándo sirve pipeline</strong>: cuando las etapas pueden hacerse en orden, tienen costes similares y hay muchos elementos en el flujo. Si una etapa es mucho más lenta, será el cuello de botella (la replicarías).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Bloque V · Trampas frecuentes que aparecen en los test</h2>
+    <table>
+      <tr><th>Trampa</th><th>Cómo identificarla</th><th>Respuesta correcta</th></tr>
+      <tr>
+        <td><code>parallel</code> sin <code>for</code></td>
+        <td>Aparece <code>#pragma omp parallel</code> y luego un bucle sin <code>#pragma omp for</code> dentro</td>
+        <td>Cada hilo ejecuta el bucle entero. Si escriben en el mismo array, race condition. Trabajo total = p × iteraciones.</td>
+      </tr>
+      <tr>
+        <td>Race condition oculta</td>
+        <td>Bucle paralelizado donde varios hilos escriben en la misma posición compartida</td>
+        <td>Necesita <code>critical</code>, <code>atomic</code> o <code>reduction</code>. Si no se puede arreglar y se usa <code>reduction</code>, suele ser la opción «correcta» aunque parezca sutil.</td>
+      </tr>
+      <tr>
+        <td>Cláusula que no existe</td>
+        <td>Aparecen «directivas» inventadas como <code>#pragma omp lock</code> o <code>#pragma omp parallel critical</code></td>
+        <td>Reconócelas como falsas. La chuleta oficial lista las directivas reales.</td>
+      </tr>
+      <tr>
+        <td>Amdahl mal aplicado</td>
+        <td>Confunden la fracción serie con la paralela, o usan la fórmula sin dividir</td>
+        <td>S(p) = 1 / (s + (1−s)/p). Comprueba unidades: en el límite p → ∞, debe dar 1/s.</td>
+      </tr>
+      <tr>
+        <td>SIMD vs MIMD</td>
+        <td>«Las GPUs son…», «las CPUs multinúcleo son…»</td>
+        <td>GPU = SIMT (variante de SIMD). Multicore = MIMD. SIMD ⇒ paralelismo de datos. MISD prácticamente no existe.</td>
+      </tr>
+      <tr>
+        <td>Esquema mal asignado</td>
+        <td>«Mergesort con programación dinámica», «Floyd con divide y vencerás»</td>
+        <td>Mergesort, quicksort, FFT → <strong>Divide y Vencerás</strong>. Floyd, alineamiento, Fibonacci con memoización → <strong>Programación Dinámica</strong>.</td>
+      </tr>
+      <tr>
+        <td>Reduce vs Allreduce</td>
+        <td>«¿Después de la reducción todos los procesos tienen el resultado?»</td>
+        <td><code>MPI_Reduce</code> deja el resultado solo en el root. <code>MPI_Allreduce</code> en todos.</td>
+      </tr>
+      <tr>
+        <td>Deadlock por <code>Ssend</code> mutuo</td>
+        <td>Dos procesos hacen <code>Ssend</code> antes de <code>Recv</code></td>
+        <td>Deadlock. Se evita con <code>MPI_Sendrecv</code>, asimetría manual o no bloqueantes.</td>
+      </tr>
+      <tr>
+        <td>Olvidar `if (i < n)` en kernel CUDA</td>
+        <td>Lanzamiento con <code>(n+255)/256</code> bloques y se accede a <code>a[i]</code> sin comprobación</td>
+        <td>Si n no es múltiplo de 256, los hilos sobrantes leen/escriben fuera de rango. Memory error.</td>
+      </tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Bloque VI · Mapa mental del temario</h2>
+
+    <div class="diagram">
+      <svg viewBox="0 0 880 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mapa mental del curso">
+        <style>
+          .mm-box   { fill: #fff; stroke: #1a1a1a; stroke-width: 1.4; }
+          .mm-warm  { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.4; }
+          .mm-cool  { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.4; }
+          .mm-green { fill: #f0f4ec; stroke: #4a6b3a; stroke-width: 1.4; }
+          .mm-purp  { fill: #f6f0f8; stroke: #6b3e7a; stroke-width: 1.4; }
+          .mm-t     { font: 600 13px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .mm-ts    { font: 500 10px 'Inter Tight', sans-serif; fill: #3d3d3d; text-anchor: middle; }
+          .mm-h     { font: italic 700 14px 'Fraunces', serif; fill: #1a1a1a; }
+          .mm-ar    { stroke: #d4cdb9; stroke-width: 1.2; fill: none; }
+        </style>
+
+        <text x="20" y="22" class="mm-h">I · Fundamentos</text>
+        <rect class="mm-warm" x="20" y="32" width="180" height="42" rx="3"/>
+        <text class="mm-t"  x="110" y="50">Clasificación Flynn</text>
+        <text class="mm-ts" x="110" y="66">SISD · SIMD · MISD · MIMD</text>
+
+        <rect class="mm-warm" x="20" y="82" width="180" height="42" rx="3"/>
+        <text class="mm-t"  x="110" y="100">Paradigmas</text>
+        <text class="mm-ts" x="110" y="116">MC · MD · SPMD · SIMT</text>
+
+        <rect class="mm-warm" x="20" y="132" width="180" height="42" rx="3"/>
+        <text class="mm-t"  x="110" y="150">Topologías de red</text>
+        <text class="mm-ts" x="110" y="166">bus · anillo · malla · hipercubo</text>
+
+        <text x="230" y="22" class="mm-h">II · Herramientas</text>
+        <rect class="mm-cool" x="230" y="32" width="180" height="42" rx="3"/>
+        <text class="mm-t"  x="320" y="50">OpenMP</text>
+        <text class="mm-ts" x="320" y="66">parallel · for · sections · task</text>
+
+        <rect class="mm-cool" x="230" y="82" width="180" height="42" rx="3"/>
+        <text class="mm-t"  x="320" y="100">MPI</text>
+        <text class="mm-ts" x="320" y="116">Send/Recv · Bcast · Reduce</text>
+
+        <rect class="mm-cool" x="230" y="132" width="180" height="42" rx="3"/>
+        <text class="mm-t"  x="320" y="150">Híbrida y manycores</text>
+        <text class="mm-ts" x="320" y="166">MPI+OpenMP · CUDA · Xeon Phi</text>
+
+        <text x="440" y="22" class="mm-h">III · Cómo diseñar</text>
+        <rect class="mm-green" x="440" y="32" width="180" height="42" rx="3"/>
+        <text class="mm-t"  x="530" y="50">Análisis</text>
+        <text class="mm-ts" x="530" y="66">Amdahl · ts/tw · speedup</text>
+
+        <rect class="mm-green" x="440" y="82" width="180" height="42" rx="3"/>
+        <text class="mm-t"  x="530" y="100">Metodología Foster</text>
+        <text class="mm-ts" x="530" y="116">Particionar → Comunicar →</text>
+        <text class="mm-ts" x="530" y="130">Aglomerar → Mapear (PCAM)</text>
+
+        <text x="650" y="22" class="mm-h">IV · Esquemas</text>
+        <rect class="mm-purp" x="650" y="32" width="210" height="42" rx="3"/>
+        <text class="mm-t"  x="755" y="50">Paralelismo de datos</text>
+        <text class="mm-ts" x="755" y="66">SAXPY · producto matriz</text>
+
+        <rect class="mm-purp" x="650" y="82" width="210" height="42" rx="3"/>
+        <text class="mm-t"  x="755" y="100">Síncrono / Relajado</text>
+        <text class="mm-ts" x="755" y="116">Jacobi vs Gauss-Seidel async</text>
+
+        <rect class="mm-purp" x="650" y="132" width="210" height="42" rx="3"/>
+        <text class="mm-t"  x="755" y="150">Grafo / Pipeline</text>
+        <text class="mm-ts" x="755" y="166">DAG · etapas en cascada</text>
+
+        <rect class="mm-purp" x="650" y="182" width="210" height="42" rx="3"/>
+        <text class="mm-t"  x="755" y="200">Divide y Vencerás · PD</text>
+        <text class="mm-ts" x="755" y="216">recursivo (task) · tablas</text>
+
+        <rect class="mm-purp" x="650" y="232" width="210" height="42" rx="3"/>
+        <text class="mm-t"  x="755" y="250">Trabajadores replicados</text>
+        <text class="mm-ts" x="755" y="266">bolsa de tareas · maestro/esclavo</text>
+
+        <path class="mm-ar" d="M 200 53 L 230 53"/>
+        <path class="mm-ar" d="M 200 103 L 230 103"/>
+        <path class="mm-ar" d="M 200 153 L 230 153"/>
+        <path class="mm-ar" d="M 410 53 L 440 53"/>
+        <path class="mm-ar" d="M 410 103 L 440 103"/>
+        <path class="mm-ar" d="M 410 153 L 440 153"/>
+        <path class="mm-ar" d="M 620 103 L 650 53"/>
+        <path class="mm-ar" d="M 620 103 L 650 103"/>
+        <path class="mm-ar" d="M 620 103 L 650 153"/>
+        <path class="mm-ar" d="M 620 103 L 650 203"/>
+        <path class="mm-ar" d="M 620 103 L 650 253"/>
+
+        <!-- Banda inferior: chuletas -->
+        <rect class="mm-box" x="20" y="310" width="840" height="180" rx="4"/>
+        <text class="mm-h" x="30" y="335">Lo que tienes en la chuleta del examen</text>
+
+        <rect class="mm-cool" x="40" y="350" width="260" height="125" rx="3"/>
+        <text class="mm-t"  x="170" y="370">OpenMP 4.0 (4 páginas)</text>
+        <text class="mm-ts" x="170" y="388">Directivas: parallel · for · sections</text>
+        <text class="mm-ts" x="170" y="404">single · master · task · taskwait</text>
+        <text class="mm-ts" x="170" y="420">critical · atomic · barrier · ordered</text>
+        <text class="mm-ts" x="170" y="436">Cláusulas: private · firstprivate · …</text>
+        <text class="mm-ts" x="170" y="452">Funciones: omp_get/set_* · locks</text>
+        <text class="mm-ts" x="170" y="468">Variables OMP_NUM_THREADS · …</text>
+
+        <rect class="mm-warm" x="310" y="350" width="260" height="125" rx="3"/>
+        <text class="mm-t"  x="440" y="370">MPI Quick Reference</text>
+        <text class="mm-ts" x="440" y="388">Init · Finalize · Comm_rank · _size</text>
+        <text class="mm-ts" x="440" y="404">Send/Recv · Ssend/Bsend/Rsend</text>
+        <text class="mm-ts" x="440" y="420">Isend/Irecv · Wait · Test · Probe</text>
+        <text class="mm-ts" x="440" y="436">Bcast · Gather · Scatter · Reduce</text>
+        <text class="mm-ts" x="440" y="452">Datatypes · Pack/Unpack · Cart_*</text>
+        <text class="mm-ts" x="440" y="468">Constantes MPI_INT · MPI_SUM · …</text>
+
+        <rect class="mm-green" x="580" y="350" width="260" height="125" rx="3"/>
+        <text class="mm-t"  x="710" y="370">CUDA Quick Reference</text>
+        <text class="mm-ts" x="710" y="388">Cualificadores __global__ · __device__</text>
+        <text class="mm-ts" x="710" y="404">Variables built-in: threadIdx · blockIdx</text>
+        <text class="mm-ts" x="710" y="420">Shared: __shared__ array / extern</text>
+        <text class="mm-ts" x="710" y="436">Memoria: cudaMalloc · cudaMemcpy</text>
+        <text class="mm-ts" x="710" y="452">Sincronización: __syncthreads</text>
+        <text class="mm-ts" x="710" y="468">Launch: kernel&lt;&lt;&lt;G,B&gt;&gt;&gt;(args)</text>
+
+        <text class="mm-ts" x="440" y="510" style="font-style: italic; fill: #c5410f;">No están en la chuleta: las fórmulas (Amdahl, ts/tw), Flynn, los esquemas algorítmicos.</text>
+      </svg>
+      <p class="caption">Repasa de izquierda a derecha: primero los fundamentos, luego cómo se programa, después cómo se diseña y por último los patrones algorítmicos. La banda inferior recuerda qué tendrás impreso a mano.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Bloque VII · Plantillas mentales para responder rápido</h2>
+
+    <h3>OpenMP: «¿qué directiva uso?»</h3>
+    <ul>
+      <li>Bucle <code>for</code> con iteraciones independientes → <code>#pragma omp parallel for</code></li>
+      <li>Bucle con <em>acumulación</em> en una variable → añadir <code>reduction(+: var)</code></li>
+      <li>Iteraciones con coste muy variable → <code>schedule(dynamic)</code> o <code>guided</code></li>
+      <li>Dos o tres trozos de código diferentes en paralelo → <code>parallel sections</code></li>
+      <li>Recorrer una estructura recursiva o un <code>while</code> → <code>parallel</code> + <code>single</code> que crea <code>task</code></li>
+      <li>«Solo uno lo hace, los demás esperan» → <code>single</code> (o <code>master</code> si te da igual la barrera)</li>
+      <li>«Solo uno lo hace cada vez, todos pasan» → <code>critical</code> (o <code>atomic</code> si es <code>x++</code> u operación simple)</li>
+    </ul>
+
+    <h3>MPI: «¿qué función uso?»</h3>
+    <ul>
+      <li>Un proceso a otro → <code>Send</code> / <code>Recv</code></li>
+      <li>Riesgo de deadlock con <code>Ssend</code> mutuo → <code>Sendrecv</code> o no bloqueantes</li>
+      <li>De uno a todos (mismo dato) → <code>Bcast</code></li>
+      <li>De uno a todos (trozos distintos) → <code>Scatter</code></li>
+      <li>De todos a uno (cada uno aporta un trozo) → <code>Gather</code></li>
+      <li>De todos a uno (combinando con op) → <code>Reduce</code></li>
+      <li>Resultado en todos → versión <code>Allreduce</code>, <code>Allgather</code>, etc.</li>
+      <li>Solapar cómputo y comunicación → <code>Isend</code>/<code>Irecv</code> + <code>Wait</code></li>
+    </ul>
+
+    <h3>CUDA: «¿qué pasos tiene un programa?»</h3>
+    <ol>
+      <li>Reservar memoria en device: <code>cudaMalloc(&amp;d_x, bytes)</code></li>
+      <li>Copiar host → device: <code>cudaMemcpy(d_x, x, bytes, cudaMemcpyHostToDevice)</code></li>
+      <li>Lanzar kernel: <code>kernel&lt;&lt;&lt;G, B&gt;&gt;&gt;(d_x, ...)</code></li>
+      <li>Copiar device → host: <code>cudaMemcpy(y, d_y, bytes, cudaMemcpyDeviceToHost)</code></li>
+      <li>Liberar: <code>cudaFree(d_x)</code></li>
+    </ol>
+    <p>Dentro del kernel: <code>int i = blockIdx.x * blockDim.x + threadIdx.x;</code> y comprobación <code>if (i &lt; n)</code> antes de tocar memoria.</p>
+
+    <h3>Esquemas: «¿cuál encaja con este problema?»</h3>
+    <table>
+      <tr><th>Pista en el enunciado</th><th>Esquema</th></tr>
+      <tr><td>«Aplica la misma operación a todos los elementos…»</td><td>Paralelismo de datos</td></tr>
+      <tr><td>«En cada paso temporal usa los valores del paso anterior»</td><td>Síncrono (con barrera)</td></tr>
+      <tr><td>«Las etapas son: primero…, luego…, finalmente…»</td><td>Pipeline</td></tr>
+      <tr><td>«Resuelve recursivamente dividiendo en dos…»</td><td>Divide y Vencerás (tasks)</td></tr>
+      <tr><td>«Calcula tabla[i][j] a partir de tabla[i−1][j]…»</td><td>Programación dinámica</td></tr>
+      <tr><td>«Cada uno coge una tarea cuando termina la suya»</td><td>Trabajadores replicados / bolsa</td></tr>
+      <tr><td>«Explorar todas las soluciones con backtracking»</td><td>Trabajadores replicados (con cota)</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Bloque VIII · Mini-quiz de autoevaluación</h2>
+    <p>Diez preguntas para comprobar que has interiorizado lo esencial. Hazlas sin mirar las respuestas; luego revisa.</p>
+
+    <div class="flashcards">
+      <div class="flashcard">
+        <div class="question">¿Qué pasa si pones <code>#pragma omp parallel</code> antes de un bucle pero olvidas el <code>for</code>?</div>
+        <div class="answer">Cada hilo ejecuta el bucle completo, no se reparte. Si los hilos escriben en el mismo array hay race condition. El trabajo total es p × n iteraciones (más lento que la serie).</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Programa con fracción serie s = 0.1. ¿Speed-up máximo asintótico (p → ∞)?</div>
+        <div class="answer">S<sub>máx</sub> = 1/s = 1/0.1 = 10. Por mucho que aumentes los procesadores, el 10 % serie pone un techo de 10×. Es la moraleja de Amdahl.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Diferencia esencial entre <code>MPI_Send</code> y <code>MPI_Ssend</code>.</div>
+        <div class="answer"><code>MPI_Send</code> (estándar) deja a la implementación decidir entre usar buffer o sincronizar; el comportamiento depende del tamaño. <code>MPI_Ssend</code> (síncrono) garantiza que no retorna hasta que el receptor empieza a recibir.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Para qué sirve <code>reduction(+: suma)</code> en OpenMP?</div>
+        <div class="answer">Cada hilo tiene una copia local de <code>suma</code> inicializada a 0 (neutro de +). Acumula sin sincronización. Al final, OpenMP combina todas las copias con <code>+</code> y deja el total en la variable original. Evita la sección crítica que serializaría el bucle.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Cómo paralelizarías mergesort con OpenMP?</div>
+        <div class="answer">Con <code>task</code>: cada llamada recursiva genera dos tareas paralelas (mitad izquierda y derecha) seguidas de <code>taskwait</code>. Llamada inicial dentro de <code>parallel</code> + <code>single</code>. Conviene un umbral: por debajo de cierto tamaño, llamar a la versión secuencial para no crear tareas demasiado pequeñas.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Tienes una matriz <code>double **a</code> y quieres enviarla con MPI. Problema.</div>
+        <div class="answer"><code>double **a</code> es array de punteros: las filas no están contiguas en memoria. <code>MPI_Send(a, …)</code> mandaría los punteros, no los datos. Solución: usar <code>double *a</code> con indexado <code>i*N + j</code>, o construir un <code>MPI_Datatype</code> derivado, o copiar a un buffer contiguo.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿En qué se diferencia un pipeline de un esquema síncrono?</div>
+        <div class="answer">El síncrono opera todos los elementos a la vez en cada paso temporal (barrera global). El pipeline tiene etapas distintas en cascada: en un instante dado, cada etapa procesa un elemento <em>distinto</em> del flujo. La aceleración del pipeline es el número de etapas; la del síncrono es el número de procesadores trabajando en paralelo dentro de cada paso.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Por qué transferir datos host↔device puede arruinar un programa CUDA?</div>
+        <div class="answer">El bus PCIe es órdenes de magnitud más lento que la memoria interna de la GPU. Si para cada cómputo pequeño copias ida y vuelta, el tiempo de transferencia domina. Patrón correcto: transferir una vez, ejecutar muchos kernels, recoger una vez.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Diferencia entre <code>MPI_Reduce</code> y <code>MPI_Allreduce</code>.</div>
+        <div class="answer">Ambos combinan valores de todos los procesos con un operador (suma, max…). <code>Reduce</code> deja el resultado solo en el root. <code>Allreduce</code> lo deja en <em>todos</em> los procesos. Internamente, <code>Allreduce</code> es más eficiente que <code>Reduce</code> + <code>Bcast</code>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Si tuvieras que decidir entre OpenMP y MPI para un cluster de 64 nodos × 16 cores, ¿qué eliges?</div>
+        <div class="answer">Híbrido MPI + OpenMP. Solo OpenMP no llegaría a otros nodos (memoria compartida limitada al nodo). Solo MPI (1024 procesos) replicaría estructuras y haría comunicaciones intra-nodo innecesarias. Un proceso MPI por nodo + 16 hilos OpenMP cada uno es la configuración natural.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">¿Qué hace <code>MPI_Bcast(&amp;n, 1, MPI_INT, 0, MPI_COMM_WORLD)</code>?</div>
+        <div class="answer">Difunde el valor de <code>n</code> (1 entero) desde el proceso 0 a todos los procesos del comunicador <code>MPI_COMM_WORLD</code>. Es una operación <em>colectiva</em>: todos los procesos deben llamarla, no solo el root. Tras la llamada, todos tienen el mismo valor en <code>n</code>.</div>
+      </div>
+      <div class="flashcard">
+        <div class="question">Indica las 4 fases de la metodología de Foster.</div>
+        <div class="answer"><strong>P</strong>articionado (descomponer en muchas tareas), <strong>C</strong>omunicación (identificar dependencias), <strong>A</strong>glomeración (agrupar tareas pequeñas), <strong>M</strong>apeo (asignar a procesadores físicos). Acrónimo: PCAM.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Antes del examen: lista de comprobación</h2>
+    <ul>
+      <li>✔ Sé identificar a qué categoría de Flynn pertenece un sistema (multicore = MIMD, GPU = SIMD/SIMT).</li>
+      <li>✔ Sé aplicar Amdahl mentalmente: 1 / (s + (1−s)/p). Asintótico = 1/s.</li>
+      <li>✔ Diferencio paralelismo síncrono (con barrera por paso), relajado (sin), pipeline (etapas en cascada), DV (recursión), PD (tabla con dependencias).</li>
+      <li>✔ Sé cuándo necesito <code>critical</code>, <code>atomic</code>, <code>reduction</code> y la diferencia entre los tres.</li>
+      <li>✔ Sé identificar cuándo un código OpenMP tiene una race condition.</li>
+      <li>✔ Sé escribir un programa MPI tipo «hello» y uno con <code>Bcast</code> + <code>Reduce</code>.</li>
+      <li>✔ Sé el esqueleto de un programa CUDA: malloc → memcpy → kernel → memcpy → free.</li>
+      <li>✔ Reconozco las 4 variantes de <code>Send</code> (estándar, síncrono, con buffer, ready) y cuándo se usa cada una.</li>
+      <li>✔ Recuerdo las 4 fases de Foster (PCAM) y sé en qué se usa cada esquema algorítmico.</li>
+      <li>✔ Tengo claro qué hay en la chuleta y qué no.</li>
+    </ul>
+
+    <div class="learning-hint">
+      Última recomendación: lee los enunciados <em>dos veces</em>. Las preguntas tipo test del examen modelo suelen tener una palabra clave que cambia el sentido (una negación, un «todas las anteriores», un «fallará»). Subráyala antes de elegir.
+    </div>
+  </section>
+
+  <nav class="session-footer">
+    <a class="nav-link prev" href="sesion_12.html">
+      <div class="nav-label">← Sesión 12</div>
+      <div class="nav-title">Trabajadores replicados</div>
+    </a>
+    <a class="nav-link next" href="index.html">
+      <div class="nav-label">Índice →</div>
+      <div class="nav-title">Volver al curso</div>
+    </a>
+  </nav>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>
