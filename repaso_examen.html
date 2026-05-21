@@ -274,19 +274,37 @@ omp_set_num_threads(<span class="nm">2</span>);
       <li>Determinismo: el resultado no depende del orden temporal de ejecución, solo del orden lógico.</li>
       <li>Suele requerir <em>doble buffer</em>: una matriz con los valores del paso k y otra con los del paso k+1, para evitar leer datos parcialmente actualizados.</li>
     </ul>
-    <p><strong>Ejemplo canónico</strong>: ecuación del calor en 2D por diferencias finitas (Jacobi).</p>
+    <p><strong>Ejemplo canónico</strong>: ecuación del calor en 2D por diferencias finitas (Jacobi). Cada punto interior se actualiza al <em>promedio</em> de sus cuatro vecinos del paso anterior — discretización de ∂u/∂t = ∇²u.</p>
 <pre><code><span class="kw">for</span> (paso = <span class="nm">0</span>; paso &lt; T; paso++) {
     <span class="pr">#pragma omp parallel for</span> collapse(<span class="nm">2</span>)
-    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">1</span>; i &lt; N-<span class="nm">1</span>; i++)
-        <span class="kw">for</span> (<span class="kw">int</span> j = <span class="nm">1</span>; j &lt; N-<span class="nm">1</span>; j++)
+    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">1</span>; i &lt; N-<span class="nm">1</span>; i++)         <span class="cm">// fila (sin bordes)</span>
+        <span class="kw">for</span> (<span class="kw">int</span> j = <span class="nm">1</span>; j &lt; N-<span class="nm">1</span>; j++)     <span class="cm">// columna (sin bordes)</span>
             nuevo[i][j] = <span class="nm">0.25</span> * (viejo[i-<span class="nm">1</span>][j] + viejo[i+<span class="nm">1</span>][j]
                               + viejo[i][j-<span class="nm">1</span>] + viejo[i][j+<span class="nm">1</span>]);
 
-    <span class="cm">// Barrera implícita del parallel for</span>
-    intercambiar(&amp;viejo, &amp;nuevo);
+    <span class="cm">// Barrera implícita del parallel for: todos terminaron el paso</span>
+    intercambiar(&amp;viejo, &amp;nuevo);                  <span class="cm">// swap de punteros, O(1)</span>
 }</code></pre>
-    <p>Cada paso temporal calcula <code>nuevo</code> a partir solo de <code>viejo</code>; sin la barrera, un hilo rápido sobrescribiría datos que otro hilo lento aún necesita leer.</p>
-    <p>El contrapunto es el <strong>paralelismo relajado</strong> (Gauss-Seidel asíncrono): cada hilo usa los valores más recientes que encuentre, sin esperar. Converge igual pero más rápido en problemas regulares, a cambio de perder determinismo.</p>
+
+    <h4>Variables del código</h4>
+    <table>
+      <tr><th>Variable</th><th>Alcance</th><th>Significado</th></tr>
+      <tr><td><code>paso</code></td><td>shared</td><td>Iteración temporal (0..T−1). El bucle exterior NO se paraleliza: cada paso depende del anterior.</td></tr>
+      <tr><td><code>T</code></td><td>shared (constante)</td><td>Número de pasos temporales a simular.</td></tr>
+      <tr><td><code>N</code></td><td>shared (constante)</td><td>Dimensión de la malla (N × N).</td></tr>
+      <tr><td><code>i</code>, <code>j</code></td><td>private automática</td><td>Índices de fila y columna. Bajo <code>collapse(2)</code>, OpenMP «aplana» los dos bucles en uno y los reparte juntos, lo que da más paralelismo cuando N es pequeño.</td></tr>
+      <tr><td><code>viejo</code>, <code>nuevo</code></td><td>shared (lectura/escritura disjuntas)</td><td><em>Doble buffer</em>: <code>viejo</code> guarda el estado del paso anterior (solo lectura); <code>nuevo</code> se rellena con el nuevo estado (escritura, sin solape con la lectura). Tras cada paso, se intercambian los punteros y <code>nuevo</code> pasa a ser el nuevo <code>viejo</code>.</td></tr>
+    </table>
+
+    <h4>Por qué este patrón funciona</h4>
+    <ol>
+      <li><strong>Sin doble buffer habría carrera</strong>: si actualizásemos <code>u[i][j]</code> in-place, un hilo rápido escribiría valores que otro hilo lento todavía está leyendo como «del paso anterior».</li>
+      <li><strong>El bucle temporal no se paraleliza</strong>: hay dependencia entre pasos consecutivos (el paso k usa los valores del k−1).</li>
+      <li><strong>Sí se paraleliza el bucle espacial</strong>: dentro de un paso, todos los puntos pueden calcularse en paralelo porque solo leen de <code>viejo</code> (sin condiciones de carrera).</li>
+      <li><strong>La barrera al final del <code>parallel for</code></strong> garantiza que todos los hilos terminan el paso antes de que <code>intercambiar</code> reasigne los punteros.</li>
+    </ol>
+
+    <p>El contrapunto es el <strong>paralelismo relajado</strong> (Gauss-Seidel asíncrono): cada hilo usa los valores más recientes que encuentre, sin esperar y sin doble buffer. Converge en menos iteraciones porque cada actualización propaga información antes; a cambio se pierde determinismo (el resultado de cada paso depende del orden de ejecución).</p>
   </section>
 
   <section>
@@ -295,93 +313,164 @@ omp_set_num_threads(<span class="nm">2</span>);
     <h3>Ejercicio 1 · OpenMP — paralelizar bucle 2D y analizar coste</h3>
     <p><strong>Enunciado</strong>: escalar cada elemento de una matriz <code>a[N][M]</code> por 0.5, en (1) paralelismo implícito sobre array unidimensional, (2) paralelismo explícito. Indicar el coste con p hilos.</p>
 
+    <h4>Proceso de construcción (lo que vas pensando)</h4>
+    <ol>
+      <li><strong>¿Las iteraciones son independientes?</strong> Sí: <code>a[i][j] *= 0.5</code> solo toca la posición <code>(i, j)</code>, no lee ni escribe ninguna otra. No hay dependencias entre iteraciones. → Paralelismo de datos puro.</li>
+      <li><strong>¿Qué bucle paralelizo?</strong> El exterior (más iteraciones gruesas) o ambos combinados con <code>collapse(2)</code>. Pero el enunciado pide aplanar a 1D primero, lo que nos da un único bucle de N·M iteraciones.</li>
+      <li><strong>¿Por qué pasar a 1D?</strong> Una <code>double **a</code> es un array de punteros a filas; las filas son contiguas <em>cada una</em>, pero entre filas hay un salto arbitrario. Aplanando a <code>double *a</code> de tamaño <code>N*M</code>, la matriz queda en un único bloque de memoria. Esto facilita: vectorización del compilador, transmisión MPI con un único <code>Send</code>, mejor uso de la caché por <em>prefetching</em>.</li>
+      <li><strong>¿Hace falta protección?</strong> No: cada hilo escribe en posiciones distintas (<code>idx</code> es la variable de iteración, automáticamente privada en <code>parallel for</code>).</li>
+      <li><strong>¿Qué schedule?</strong> <code>static</code>: las iteraciones cuestan todas lo mismo (una multiplicación), reparto fijo sin overhead de gestión.</li>
+    </ol>
+
     <p><strong>(1) Paralelismo implícito sobre array 1D</strong>:</p>
 <pre><code><span class="kw">double</span> *a = malloc(N * M * <span class="kw">sizeof</span>(<span class="kw">double</span>));   <span class="cm">// almacenamiento contiguo</span>
-<span class="cm">// ... inicialización ...</span>
+<span class="cm">// ... inicialización: a[i*M + j] equivale a a[i][j] ...</span>
 
 <span class="pr">#pragma omp parallel for</span> schedule(<span class="kw">static</span>)
 <span class="kw">for</span> (<span class="kw">int</span> idx = <span class="nm">0</span>; idx &lt; N * M; idx++)
     a[idx] *= <span class="nm">0.5</span>;</code></pre>
-    <p><strong>Por qué 1D</strong>: una matriz declarada como <code>double **a</code> es un array de punteros a filas (no contigua). Pasarla a 1D <code>double *a</code> con indexado <code>i*M + j</code> permite recorrerla como un solo bloque, optimiza el uso de caché y deja que el compilador vectorice. Es el patrón natural para librerías como BLAS y para enviar la matriz entera con un único <code>MPI_Send</code>.</p>
 
-    <p><strong>Coste</strong>: la operación <code>a[idx] *= 0.5</code> es O(1) por elemento; hay N·M elementos. Con p hilos sin comunicación:</p>
+    <h4>Variables del código</h4>
     <table>
-      <tr><th>Magnitud</th><th>Expresión</th></tr>
-      <tr><td>Tiempo secuencial</td><td>T<sub>1</sub> = N · M · t<sub>op</sub></td></tr>
-      <tr><td>Tiempo paralelo</td><td>T<sub>p</sub> = (N · M / p) · t<sub>op</sub> + t<sub>overhead</sub></td></tr>
-      <tr><td>Speed-up ideal</td><td>S(p) ≈ p (operación independiente, sin sincronización entre hilos)</td></tr>
-      <tr><td>Eficiencia</td><td>E(p) ≈ 1</td></tr>
+      <tr><th>Variable</th><th>Tipo / alcance</th><th>Significado</th></tr>
+      <tr><td><code>a</code></td><td><code>double*</code> · <em>shared</em></td><td>Puntero al primer elemento de la matriz aplanada. Visible para todos los hilos: solo lectura/escritura disjunta entre ellos.</td></tr>
+      <tr><td><code>N</code>, <code>M</code></td><td><code>int</code> · <em>shared</em> (constantes)</td><td>Dimensiones lógicas. Acceso <code>a[i*M + j]</code> mapea fila <em>i</em> y columna <em>j</em> a un único índice plano.</td></tr>
+      <tr><td><code>idx</code></td><td><code>int</code> · <em>private automática</em></td><td>Variable de iteración del bucle bajo <code>parallel for</code>: OpenMP la convierte en privada por cada hilo sin que tengas que declararlo.</td></tr>
     </table>
-    <p>Es paralelismo de datos puro: el caso de manual para escalar bien.</p>
 
-    <p><strong>(2) Paralelismo explícito</strong>:</p>
+    <h4>Coste con p hilos</h4>
+    <p>La operación <code>a[idx] *= 0.5</code> es O(1) por elemento; hay N·M elementos. Sin comunicación entre hilos:</p>
+    <table>
+      <tr><th>Magnitud</th><th>Expresión</th><th>Interpretación</th></tr>
+      <tr><td>Tiempo secuencial</td><td>T<sub>1</sub> = N · M · t<sub>op</sub></td><td>una multiplicación por elemento</td></tr>
+      <tr><td>Tiempo paralelo</td><td>T<sub>p</sub> = (N · M / p) · t<sub>op</sub> + t<sub>overhead</sub></td><td>el reparto entre p hilos divide el trabajo</td></tr>
+      <tr><td>Speed-up ideal</td><td>S(p) ≈ p</td><td>operación totalmente independiente</td></tr>
+      <tr><td>Eficiencia</td><td>E(p) ≈ 1</td><td>caso modelo de paralelismo de datos</td></tr>
+    </table>
+
+    <p><strong>(2) Paralelismo explícito</strong>: el programador calcula los rangos a mano. Equivalente lógico al <code>schedule(static)</code> anterior.</p>
 <pre><code><span class="pr">#pragma omp parallel</span>
 {
-    <span class="kw">int</span> tid    = omp_get_thread_num();
-    <span class="kw">int</span> nth    = omp_get_num_threads();
-    <span class="kw">int</span> total  = N * M;
-    <span class="kw">int</span> chunk  = (total + nth - <span class="nm">1</span>) / nth;     <span class="cm">// redondeo hacia arriba</span>
-    <span class="kw">int</span> ini    = tid * chunk;
-    <span class="kw">int</span> fin    = (ini + chunk &lt; total) ? ini + chunk : total;
+    <span class="kw">int</span> tid    = omp_get_thread_num();                <span class="cm">// quién soy (0..nth-1)</span>
+    <span class="kw">int</span> nth    = omp_get_num_threads();               <span class="cm">// cuántos somos</span>
+    <span class="kw">int</span> total  = N * M;                                <span class="cm">// trabajo total</span>
+    <span class="kw">int</span> chunk  = (total + nth - <span class="nm">1</span>) / nth;             <span class="cm">// tamaño de bloque (techo)</span>
+    <span class="kw">int</span> ini    = tid * chunk;                          <span class="cm">// mi posición de inicio</span>
+    <span class="kw">int</span> fin    = (ini + chunk &lt; total) ? ini + chunk : total;   <span class="cm">// fin sin desbordar</span>
 
     <span class="kw">for</span> (<span class="kw">int</span> idx = ini; idx &lt; fin; idx++)
         a[idx] *= <span class="nm">0.5</span>;
 }</code></pre>
-    <p>Aquí <em>el programador</em> calcula los rangos. Equivalente a <code>schedule(static)</code> implícito. La diferencia con (1) es pedagógica: en explícito ves quién hace qué; en implícito confías en el runtime de OpenMP.</p>
+
+    <h4>Variables del código explícito</h4>
+    <table>
+      <tr><th>Variable</th><th>Tipo / alcance</th><th>Significado</th></tr>
+      <tr><td><code>tid</code></td><td><code>int</code> · <em>private</em> (declarada dentro)</td><td>Identificador del hilo, entre 0 y nth−1. Determina <em>qué trozo</em> me toca.</td></tr>
+      <tr><td><code>nth</code></td><td><code>int</code> · <em>private</em></td><td>Número total de hilos en el equipo. Todos los hilos ven el mismo valor.</td></tr>
+      <tr><td><code>total</code></td><td><code>int</code> · <em>private</em></td><td>Trabajo total = N · M iteraciones a repartir.</td></tr>
+      <tr><td><code>chunk</code></td><td><code>int</code> · <em>private</em></td><td>Tamaño nominal del bloque por hilo. El <em>+ nth − 1</em> antes de dividir es el truco para <em>redondear hacia arriba</em> y que el último hilo coja también el resto cuando <code>total</code> no es múltiplo de <code>nth</code>.</td></tr>
+      <tr><td><code>ini</code></td><td><code>int</code> · <em>private</em></td><td>Índice inicial de mi bloque: hilo 0 empieza en 0, hilo 1 en chunk, hilo 2 en 2·chunk, …</td></tr>
+      <tr><td><code>fin</code></td><td><code>int</code> · <em>private</em></td><td>Índice final exclusivo. La cláusula ternaria evita que el último hilo lea fuera del array si <code>ini + chunk &gt; total</code>.</td></tr>
+    </table>
+
+    <p>Las variables declaradas <em>dentro</em> de la región <code>parallel</code> son privadas automáticamente: cada hilo crea su propia copia en su pila. No hace falta declarar <code>private(tid, nth, …)</code>.</p>
+
+    <p>La diferencia con (1) es pedagógica: en explícito <em>ves</em> el reparto; en implícito confías en el runtime de OpenMP. En la práctica, prefiere implícito (más legible y menos propenso a errores aritméticos en el cálculo de los límites).</p>
 
     <h3>Ejercicio 2 · MPI — cálculo de π en paralelo</h3>
-    <p><strong>Enunciado</strong>: paralelizar con MPI el cálculo de π por la regla del rectángulo.</p>
-    <p>Idea: cada proceso suma las iteraciones que le tocan (reparto cíclico o por bloques) y al final se reducen las sumas parciales con <code>MPI_Reduce</code>.</p>
+    <p><strong>Enunciado</strong>: paralelizar con MPI el cálculo de π por la regla del rectángulo de <em>n</em> subintervalos: π ≈ h · Σ<sub>i=1..n</sub> f(x<sub>i</sub>) con h = 1/n, x<sub>i</sub> = h · (i − 0.5), f(x) = 4 / (1 + x²).</p>
+
+    <h4>Proceso de construcción (lo que vas pensando)</h4>
+    <ol>
+      <li><strong>¿Qué se paraleliza?</strong> El bucle de la suma (iteraciones independientes: cada x<sub>i</sub> se evalúa por separado y se acumula). Es paralelismo de datos con reducción.</li>
+      <li><strong>¿Cómo reparto las iteraciones entre procesos?</strong> Dos opciones equivalentes:
+        <ul>
+          <li><em>Por bloques</em>: el proceso k coge <code>[k·n/nproc, (k+1)·n/nproc)</code>. Sencillo.</li>
+          <li><em>Cíclico</em>: el proceso k coge <code>i = k+1, k+1+nproc, k+1+2·nproc…</code>. Balanceo perfecto cuando n no es múltiplo de nproc.</li>
+        </ul>
+        Aquí usamos cíclico por elegancia.
+      </li>
+      <li><strong>¿Qué datos comparten todos?</strong> El número total de subintervalos <em>n</em>. Lo lee el proceso 0 y se reparte con <code>MPI_Bcast</code>. Como aquí es una constante del programa, el <code>Bcast</code> es opcional; lo incluimos para que el patrón sea general.</li>
+      <li><strong>¿Cómo se combinan los resultados parciales?</strong> Cada proceso calcula <em>su</em> suma local; al final se suman todas con <code>MPI_Reduce</code> usando operador <code>MPI_SUM</code> hacia el root.</li>
+      <li><strong>¿Quién imprime?</strong> Solo el root: tras la reducción es el único que tiene el resultado completo.</li>
+      <li><strong>Esqueleto resultante</strong>: <code>MPI_Init</code> → <code>Comm_rank</code>/<code>Comm_size</code> → <code>Bcast(n)</code> → bucle local → <code>Reduce</code> → root imprime → <code>MPI_Finalize</code>. Este es el patrón canónico de <em>reducción global</em>.</li>
+    </ol>
 
 <pre><code><span class="pr">#include</span> <span class="st">&lt;mpi.h&gt;</span>
 <span class="pr">#include</span> <span class="st">&lt;stdio.h&gt;</span>
 <span class="pr">#include</span> <span class="st">&lt;math.h&gt;</span>
 
-<span class="kw">double</span> f(<span class="kw">double</span> a) { <span class="kw">return</span> <span class="nm">4.0</span> / (<span class="nm">1.0</span> + a * a); }
+<span class="kw">double</span> f(<span class="kw">double</span> a) { <span class="kw">return</span> <span class="nm">4.0</span> / (<span class="nm">1.0</span> + a * a); }     <span class="cm">// integrando</span>
 
 <span class="kw">int</span> main(<span class="kw">int</span> argc, <span class="kw">char</span> *argv[]) {
     <span class="kw">int</span> rank, nproc, n = <span class="nm">100</span>, i;
     <span class="kw">double</span> h, local_sum = <span class="nm">0.0</span>, total_sum, pi, x;
-    <span class="kw">const double</span> PI25DT = <span class="nm">3.141592653589793</span>;
+    <span class="kw">const double</span> PI25DT = <span class="nm">3.141592653589793</span>;     <span class="cm">// π con 15 cifras (referencia)</span>
 
-    <span class="fn">MPI_Init</span>(&amp;argc, &amp;argv);
-    <span class="fn">MPI_Comm_rank</span>(MPI_COMM_WORLD, &amp;rank);
-    <span class="fn">MPI_Comm_size</span>(MPI_COMM_WORLD, &amp;nproc);
+    <span class="fn">MPI_Init</span>(&amp;argc, &amp;argv);                          <span class="cm">// 1. arranca MPI</span>
+    <span class="fn">MPI_Comm_rank</span>(MPI_COMM_WORLD, &amp;rank);            <span class="cm">// 2. ¿quién soy? (0..nproc-1)</span>
+    <span class="fn">MPI_Comm_size</span>(MPI_COMM_WORLD, &amp;nproc);           <span class="cm">// 3. ¿cuántos somos?</span>
 
-    <span class="cm">// El proceso 0 distribuye n (en este caso es constante; en general por Bcast)</span>
-    <span class="fn">MPI_Bcast</span>(&amp;n, <span class="nm">1</span>, MPI_INT, <span class="nm">0</span>, MPI_COMM_WORLD);
-    h = <span class="nm">1.0</span> / (<span class="kw">double</span>) n;
+    <span class="fn">MPI_Bcast</span>(&amp;n, <span class="nm">1</span>, MPI_INT, <span class="nm">0</span>, MPI_COMM_WORLD);     <span class="cm">// 4. todos conocen n</span>
+    h = <span class="nm">1.0</span> / (<span class="kw">double</span>) n;                            <span class="cm">// 5. ancho de cada rectángulo</span>
 
-    <span class="cm">// Reparto cíclico: el proceso k coge i = k+1, k+1+nproc, k+1+2*nproc...</span>
+    <span class="cm">// 6. reparto cíclico: proceso k toma i = k+1, k+1+nproc, ...</span>
     <span class="kw">for</span> (i = rank + <span class="nm">1</span>; i &lt;= n; i += nproc) {
-        x = h * ((<span class="kw">double</span>) i - <span class="nm">0.5</span>);
-        local_sum += f(x);
+        x = h * ((<span class="kw">double</span>) i - <span class="nm">0.5</span>);                  <span class="cm">// centro del rectángulo i</span>
+        local_sum += f(x);                              <span class="cm">// aporte de este rectángulo</span>
     }
 
-    <span class="cm">// Reducción al proceso 0</span>
+    <span class="cm">// 7. suma todas las local_sum en el proceso 0</span>
     <span class="fn">MPI_Reduce</span>(&amp;local_sum, &amp;total_sum, <span class="nm">1</span>, MPI_DOUBLE,
                MPI_SUM, <span class="nm">0</span>, MPI_COMM_WORLD);
 
-    <span class="kw">if</span> (rank == <span class="nm">0</span>) {
+    <span class="kw">if</span> (rank == <span class="nm">0</span>) {                                  <span class="cm">// 8. solo el root tiene total_sum</span>
         pi = h * total_sum;
         printf(<span class="st">"pi ≈ %.16f, error = %.16f\n"</span>,
                pi, fabs(pi - PI25DT));
     }
 
-    <span class="fn">MPI_Finalize</span>();
+    <span class="fn">MPI_Finalize</span>();                                  <span class="cm">// 9. cierra MPI</span>
     <span class="kw">return</span> <span class="nm">0</span>;
 }</code></pre>
 
-    <p><strong>Comentarios para argumentar en el examen</strong>:</p>
+    <h4>Variables del programa</h4>
+    <table>
+      <tr><th>Variable</th><th>Tipo</th><th>Quién la usa</th><th>Significado</th></tr>
+      <tr><td><code>argc</code>, <code>argv</code></td><td><code>int</code>, <code>char**</code></td><td>parámetro</td><td>Argumentos de línea de comandos; MPI los modifica internamente al inicializar.</td></tr>
+      <tr><td><code>rank</code></td><td><code>int</code></td><td>cada proceso (valor distinto)</td><td>Identificador único del proceso dentro de <code>MPI_COMM_WORLD</code>, entre 0 y nproc−1. Determina qué iteraciones le tocan.</td></tr>
+      <tr><td><code>nproc</code></td><td><code>int</code></td><td>todos (mismo valor)</td><td>Número total de procesos lanzados con <code>mpirun -np</code>. Usado para calcular el reparto.</td></tr>
+      <tr><td><code>n</code></td><td><code>int</code></td><td>todos (tras Bcast)</td><td>Número de subintervalos de la regla del rectángulo. Más grande ⇒ mayor precisión y más cómputo.</td></tr>
+      <tr><td><code>i</code></td><td><code>int</code></td><td>local a cada proceso</td><td>Índice de iteración del bucle local. Solo recorre los valores que pertenecen al proceso actual.</td></tr>
+      <tr><td><code>h</code></td><td><code>double</code></td><td>todos (mismo valor)</td><td>Ancho de cada rectángulo: 1/n. Calculado tras el Bcast para que todos lo conozcan.</td></tr>
+      <tr><td><code>x</code></td><td><code>double</code></td><td>local</td><td>Punto donde evaluamos f: centro del rectángulo i (regla del punto medio).</td></tr>
+      <tr><td><code>local_sum</code></td><td><code>double</code></td><td>local (valor distinto en cada proceso)</td><td>Acumulador parcial: suma de f(x) sobre las iteraciones que le tocaron a este proceso. Se inicializa a 0.0.</td></tr>
+      <tr><td><code>total_sum</code></td><td><code>double</code></td><td>solo válido en root tras Reduce</td><td>Suma global de todas las local_sum. En los procesos no-root, el valor queda indefinido.</td></tr>
+      <tr><td><code>pi</code></td><td><code>double</code></td><td>solo root</td><td>Aproximación final: h · total_sum. Calculada y mostrada solo en el proceso 0.</td></tr>
+      <tr><td><code>PI25DT</code></td><td><code>const double</code></td><td>todos</td><td>Valor de π de referencia con 25 dígitos; sirve para calcular el error absoluto.</td></tr>
+    </table>
+
+    <h4>Comentarios para argumentar en el examen</h4>
     <ul>
-      <li><strong>Reparto cíclico</strong> en lugar de por bloques contiguos: balanceo perfecto cuando n no es múltiplo de nproc. Si fuera por bloques se podría usar <code>local_n = n / nproc</code> y trozos contiguos.</li>
-      <li><strong>MPI_Reduce</strong> en lugar de un bucle <code>Recv</code> + suma: usa árbol logarítmico, mucho más eficiente y conciso.</li>
-      <li><strong>Solo el root imprime</strong>: el resultado total solo lo tiene el proceso 0 tras <code>MPI_Reduce</code>. Si todos lo necesitaran, sería <code>MPI_Allreduce</code>.</li>
+      <li><strong>Reparto cíclico</strong> (<code>i = rank+1, +=nproc</code>) en lugar de por bloques contiguos: balanceo perfecto cuando n no es múltiplo de nproc. Si fuera por bloques se usaría <code>local_n = n / nproc</code> y trozos contiguos <code>[rank·local_n, (rank+1)·local_n)</code>.</li>
+      <li><strong>MPI_Reduce</strong> en lugar de un bucle de <code>Recv</code> + suma: usa árbol logarítmico, mucho más eficiente y conciso (O(log p) vs O(p)).</li>
+      <li><strong>Solo el root imprime</strong>: el resultado total solo lo tiene el proceso 0 tras <code>MPI_Reduce</code>. Si todos lo necesitaran (por ejemplo, para una segunda fase de cómputo), sería <code>MPI_Allreduce</code>.</li>
       <li><strong>Coste de comunicaciones</strong>: 1 <code>Bcast</code> de un entero + 1 <code>Reduce</code> de un double. Ambas O(log p). Despreciable comparado con el cómputo si n es grande.</li>
+      <li><strong>Variables locales vs globales</strong>: ojo con confundir <code>local_sum</code> y <code>total_sum</code>. La primera la calcula <em>cada</em> proceso por separado; la segunda solo es válida en el root tras la reducción.</li>
     </ul>
 
     <h3>Ejercicio 3 · Pipeline de 3 etapas (paso de mensajes)</h3>
     <p><strong>Enunciado</strong>: pseudocódigo con paso de mensajes para un pipeline que procesa <code>a[n]</code>: etapa 1 filtra impares, etapa 2 multiplica por 2, etapa 3 imprime.</p>
+
+    <h4>Proceso de construcción (lo que vas pensando)</h4>
+    <ol>
+      <li><strong>¿Cuántos procesos?</strong> Uno por etapa. Aquí 3: P0 filtra, P1 transforma, P2 imprime.</li>
+      <li><strong>¿Quién tiene los datos al inicio?</strong> El array <code>a</code> está en P0 (la primera etapa siempre es la que recibe la entrada).</li>
+      <li><strong>¿Cómo fluyen los datos?</strong> En cadena: P0 → P1 → P2. Cada etapa <em>recibe</em> del anterior, hace su trabajo y <em>envía</em> al siguiente. La última etapa no envía a nadie.</li>
+      <li><strong>¿Cómo se sabe que el flujo se acabó?</strong> Con un <strong>centinela</strong>: un valor especial que nunca aparece en datos reales (aquí <code>FIN = −1</code>) que marca el final. Cada etapa lo propaga a la siguiente al recibirlo.</li>
+      <li><strong>¿Qué tipo de envío?</strong> Bloqueante (<code>MPI_Send</code>/<code>MPI_Recv</code>) por claridad. En producción se usa no bloqueante (<code>Isend</code>/<code>Irecv</code>) para que cada etapa empiece a procesar el siguiente dato mientras envía el actual.</li>
+      <li><strong>¿Cómo se logra el paralelismo?</strong> En régimen permanente (cuando el pipeline está lleno) las 3 etapas trabajan a la vez sobre datos distintos del flujo. Aceleración teórica = número de etapas.</li>
+    </ol>
 
     <div class="diagram">
       <svg viewBox="0 0 720 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pipeline de 3 etapas">
@@ -470,13 +559,381 @@ omp_set_num_threads(<span class="nm">2</span>);
     }
 }</code></pre>
 
-    <p><strong>Razonamiento clave para el examen</strong>:</p>
+    <h4>Variables del pseudocódigo</h4>
+    <table>
+      <tr><th>Variable / constante</th><th>Dónde existe</th><th>Significado</th></tr>
+      <tr><td><code>FIN</code> = −1</td><td>todos los procesos</td><td>Valor centinela. Cualquier número que no aparezca en los datos reales sirve; aquí asumimos que no procesamos negativos.</td></tr>
+      <tr><td><code>TAG</code></td><td>todos</td><td>Etiqueta entera del mensaje. Mismo valor en send y recv. Útil si en el futuro distinguimos tipos de mensaje.</td></tr>
+      <tr><td><code>a[n]</code></td><td>solo P0</td><td>Array de entrada. Vive únicamente en el proceso que abre el pipeline; las otras etapas reciben elementos sueltos.</td></tr>
+      <tr><td><code>i</code></td><td>solo P0</td><td>Índice del bucle que recorre <code>a</code> en la primera etapa.</td></tr>
+      <tr><td><code>x</code></td><td>P1 y P2</td><td>Variable de paso: cada etapa recibe un valor en <code>x</code>, lo procesa y lo reenvía. Es <em>local</em> a cada proceso aunque tenga el mismo nombre en el código.</td></tr>
+      <tr><td><code>fin</code></td><td>P0</td><td>Variable temporal para enviar el centinela (necesitamos pasarle una dirección a <code>MPI_Send</code>, no se puede pasar el literal directamente).</td></tr>
+      <tr><td><code>MPI_STATUS_IGNORE</code></td><td>en las llamadas Recv</td><td>Constante MPI que indica «no me interesa el status del mensaje». Ahorra declarar una <code>MPI_Status</code> que no vamos a usar.</td></tr>
+    </table>
+
+    <h4>Razonamiento clave para el examen</h4>
     <ul>
-      <li><strong>El centinela FIN</strong> es el patrón estándar para terminar un pipeline: cuando el flujo se acaba, cada etapa propaga el FIN a la siguiente y termina.</li>
-      <li><strong>Las comunicaciones son punto a punto y bloqueantes</strong>: <code>MPI_Send</code> / <code>MPI_Recv</code>. En un pipeline real conviene no bloqueantes (<code>MPI_Isend</code>) para solapar comunicación con cómputo, pero el pseudocódigo se entiende mejor con bloqueantes.</li>
+      <li><strong>El centinela FIN</strong> es el patrón estándar para terminar un pipeline: cuando el flujo se acaba, cada etapa propaga el FIN a la siguiente y termina. Sin centinela, las etapas posteriores quedarían eternamente en <code>Recv</code> (deadlock).</li>
+      <li><strong>Las comunicaciones son punto a punto y bloqueantes</strong>: <code>MPI_Send</code>/<code>MPI_Recv</code>. En un pipeline real conviene no bloqueantes (<code>MPI_Isend</code>) para solapar comunicación con cómputo, pero el pseudocódigo se entiende mejor con bloqueantes.</li>
       <li><strong>Solapamiento</strong>: si el flujo es continuo, las 3 etapas trabajan a la vez. Aceleración ideal con r etapas: × r en régimen permanente. Las 2 primeras y 2 últimas iteraciones son fases transitorias (no todas las etapas activas).</li>
       <li><strong>Cuándo sirve pipeline</strong>: cuando las etapas pueden hacerse en orden, tienen costes similares y hay muchos elementos en el flujo. Si una etapa es mucho más lenta, será el cuello de botella (la replicarías).</li>
+      <li><strong>Cuello de botella en el ejemplo</strong>: la etapa 3 (imprimir) suele ser la más lenta por I/O. En un caso real, podríamos mantener un buffer en P2 y volcarlo en lotes.</li>
     </ul>
+  </section>
+
+  <section>
+    <h2>Bloque IV bis · Cómo se construye un programa paralelo</h2>
+    <p>Esta sección sintetiza el <em>modelo mental</em> de cada tecnología: la cadena de decisiones que vas tomando al diseñar un programa. Si la interiorizas, los ejercicios del examen se resuelven casi solos.</p>
+
+    <h3>OpenMP — modelo mental</h3>
+
+    <div class="diagram">
+      <svg viewBox="0 0 740 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de decisiones OpenMP">
+        <style>
+          .dm-box   { fill: #fff; stroke: #1a1a1a; stroke-width: 1.3; }
+          .dm-q     { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.4; }
+          .dm-r     { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.4; }
+          .dm-end   { fill: #f0f4ec; stroke: #4a6b3a; stroke-width: 1.4; }
+          .dm-t     { font: 600 11px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .dm-ts    { font: 500 10px 'JetBrains Mono', monospace; fill: #2a5f7f; text-anchor: middle; }
+          .dm-l     { font: italic 600 10px 'Fraunces', serif; fill: #c5410f; text-anchor: middle; }
+          .dm-ar    { stroke: #c5410f; stroke-width: 1.4; fill: none; marker-end: url(#dm-h); }
+        </style>
+        <defs>
+          <marker id="dm-h" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <rect class="dm-q" x="280" y="15" width="180" height="40" rx="3"/>
+        <text class="dm-t" x="370" y="32">¿Qué paralelizo?</text>
+        <text class="dm-t" x="370" y="46">(identificar paralelismo)</text>
+
+        <path class="dm-ar" d="M 370 55 L 370 80"/>
+
+        <rect class="dm-q" x="280" y="85" width="180" height="40" rx="3"/>
+        <text class="dm-t" x="370" y="100">¿Es un bucle for canónico?</text>
+        <text class="dm-t" x="370" y="116">(init, cond, incr)</text>
+
+        <path class="dm-ar" d="M 280 105 L 180 150"/>
+        <text class="dm-l" x="215" y="130">no</text>
+        <path class="dm-ar" d="M 460 105 L 560 150"/>
+        <text class="dm-l" x="525" y="130">sí</text>
+
+        <rect class="dm-q" x="60" y="150" width="180" height="40" rx="3"/>
+        <text class="dm-t" x="150" y="167">¿Son trozos distintos</text>
+        <text class="dm-t" x="150" y="182">conocidos a priori?</text>
+
+        <rect class="dm-r" x="490" y="150" width="180" height="40" rx="3"/>
+        <text class="dm-t" x="580" y="167">parallel for</text>
+        <text class="dm-ts" x="580" y="183">+ reduction si acumula</text>
+
+        <path class="dm-ar" d="M 60 175 L 30 220"/>
+        <text class="dm-l" x="30" y="200">no</text>
+        <path class="dm-ar" d="M 240 175 L 270 220"/>
+        <text class="dm-l" x="270" y="200">sí</text>
+
+        <rect class="dm-q" x="10" y="225" width="180" height="40" rx="3"/>
+        <text class="dm-t" x="100" y="242">¿Recursión irregular</text>
+        <text class="dm-t" x="100" y="257">o while/lista?</text>
+
+        <rect class="dm-r" x="200" y="225" width="180" height="40" rx="3"/>
+        <text class="dm-t" x="290" y="242">sections</text>
+        <text class="dm-ts" x="290" y="258">paralelismo funcional</text>
+
+        <path class="dm-ar" d="M 100 265 L 100 295"/>
+
+        <rect class="dm-r" x="10" y="300" width="180" height="40" rx="3"/>
+        <text class="dm-t" x="100" y="317">parallel + single</text>
+        <text class="dm-ts" x="100" y="333">que genera task</text>
+
+        <path class="dm-ar" d="M 580 190 L 580 220"/>
+
+        <rect class="dm-q" x="490" y="225" width="180" height="40" rx="3"/>
+        <text class="dm-t" x="580" y="242">¿Varios hilos escriben</text>
+        <text class="dm-t" x="580" y="257">en la misma variable?</text>
+
+        <path class="dm-ar" d="M 580 265 L 580 295"/>
+
+        <rect class="dm-r" x="380" y="300" width="170" height="55" rx="3"/>
+        <text class="dm-t" x="465" y="318">Acumulación simple</text>
+        <text class="dm-ts" x="465" y="335">reduction(op:var)</text>
+
+        <rect class="dm-r" x="560" y="300" width="170" height="55" rx="3"/>
+        <text class="dm-t" x="645" y="318">x++ o x op= expr</text>
+        <text class="dm-ts" x="645" y="335">atomic</text>
+
+        <rect class="dm-end" x="280" y="370" width="180" height="0" />
+
+        <text class="dm-t" x="280" y="380" style="font-style:italic;">Otros casos → critical</text>
+      </svg>
+      <p class="caption">Árbol de decisión para escoger directiva. Empieza por «¿es un <code>for</code> canónico?» y desciende según la naturaleza del paralelismo.</p>
+    </div>
+
+    <h4>Decisiones que hay que tomar, en orden</h4>
+    <ol>
+      <li><strong>Identificar el paralelismo</strong>: ¿qué partes son independientes? Si no lo son, ¿se pueden reordenar las operaciones para que lo sean?</li>
+      <li><strong>Elegir la directiva</strong>: <code>parallel for</code> para bucles, <code>sections</code> para ramas fijas, <code>task</code> para recursión/listas, <code>single</code> para «solo uno hace algo» dentro de un paralelo.</li>
+      <li><strong>Clasificar las variables</strong>:
+        <ul>
+          <li><em>Solo lectura</em> → shared por defecto, sin problema.</li>
+          <li><em>Cada hilo escribe en posiciones distintas</em> → shared, sin problema.</li>
+          <li><em>Variables locales del bucle</em> → declararlas <em>dentro</em> del <code>parallel</code> o usar <code>private(...)</code>.</li>
+          <li><em>Acumuladores</em> (suma, max, conteo) → <code>reduction(+:var)</code>, <code>reduction(max:var)</code>…</li>
+          <li><em>Escritura compartida ineludible</em> → <code>critical</code> o <code>atomic</code>.</li>
+        </ul>
+      </li>
+      <li><strong>Elegir scheduling</strong>: <code>static</code> si las iteraciones son uniformes; <code>dynamic</code>/<code>guided</code> si son irregulares.</li>
+      <li><strong>Sincronizar</strong>: ¿hace falta una <code>barrier</code> manual? ¿Puedo ahorrar tiempo con <code>nowait</code>?</li>
+    </ol>
+
+    <h4>Ejemplo guiado: suma de un array</h4>
+<pre><code><span class="cm">// Punto de partida secuencial</span>
+<span class="kw">double</span> suma = <span class="nm">0.0</span>;
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++) suma += v[i];</code></pre>
+
+    <p>Aplicamos la cadena de decisiones:</p>
+    <ol>
+      <li>«¿Qué paralelizo?» → el bucle: cada <code>v[i]</code> se lee una vez, suma <em>parece</em> compartido pero solo se acumula.</li>
+      <li>«¿Bucle for canónico?» → sí. → <code>parallel for</code>.</li>
+      <li>«¿Variables?» → <code>v</code> es shared (todos leen); <code>n</code> shared (constante); <code>i</code> private automática; <code>suma</code> es el problema — todos quieren escribir.</li>
+      <li>«¿Suma sobre variable compartida?» → patrón clásico de <em>acumulación</em>. → <code>reduction(+:suma)</code>.</li>
+    </ol>
+
+<pre><code><span class="kw">double</span> suma = <span class="nm">0.0</span>;
+<span class="pr">#pragma omp parallel for</span> reduction(+: suma)
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++) suma += v[i];</code></pre>
+
+    <p>Si no conociéramos <code>reduction</code>, tendríamos que usar <code>critical</code> y el bucle se serializaría. Si fuera una operación complicada (no asociativa-conmutativa) no podríamos usar reduction y habría que repensar el algoritmo.</p>
+
+    <h3>MPI — modelo mental</h3>
+
+    <h4>Decisiones que hay que tomar, en orden</h4>
+    <ol>
+      <li><strong>Esqueleto siempre igual</strong>: <code>MPI_Init</code> → <code>Comm_rank</code> → <code>Comm_size</code> → <em>tu lógica</em> → <code>MPI_Finalize</code>. Memorízalo: aparece en todos los programas.</li>
+      <li><strong>Decidir el rol de cada proceso</strong>: típicamente el 0 es maestro lógico (lee entrada, distribuye, recoge, imprime); los demás son workers. Esa asimetría se implementa con <code>if (rank == 0) { … } else { … }</code>.</li>
+      <li><strong>¿Cómo reparto los datos iniciales?</strong>
+        <ul>
+          <li>Mismo dato a todos → <code>MPI_Bcast</code>.</li>
+          <li>Trozo distinto a cada uno (array) → <code>MPI_Scatter</code>.</li>
+          <li>Distribución manual cuando el reparto es desigual → <code>Send</code>/<code>Recv</code> en bucle.</li>
+        </ul>
+      </li>
+      <li><strong>¿Cómo reparto el cómputo entre procesos?</strong> Cada uno determina su trabajo a partir de <code>rank</code> y <code>nproc</code>:
+        <ul>
+          <li><em>Por bloques</em>: <code>local_n = n / nproc; ini = rank * local_n; fin = ini + local_n;</code></li>
+          <li><em>Cíclico</em>: <code>for (i = rank; i &lt; n; i += nproc) ...</code></li>
+        </ul>
+      </li>
+      <li><strong>¿Cómo se combinan los resultados?</strong>
+        <ul>
+          <li>Una sola cantidad agregada (suma, max…) en root → <code>MPI_Reduce</code>.</li>
+          <li>Una sola cantidad agregada en todos → <code>MPI_Allreduce</code>.</li>
+          <li>Cada proceso aporta un trozo, root los junta → <code>MPI_Gather</code>.</li>
+          <li>Procesos vecinos intercambian (stencil) → <code>MPI_Sendrecv</code>.</li>
+        </ul>
+      </li>
+      <li><strong>¿Quién imprime?</strong> Solo el root. El resto de procesos no deberían escribir a stdout salvo para depurar.</li>
+      <li><strong>Cuidado con deadlocks</strong>: dos <code>Ssend</code> mutuos se cuelgan. Solución: <code>Sendrecv</code> o no bloqueantes.</li>
+    </ol>
+
+    <div class="diagram">
+      <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Esqueleto MPI">
+        <style>
+          .mp-box  { fill: #fdf6e3; stroke: #c5410f; stroke-width: 1.4; }
+          .mp-box2 { fill: #f0f5f8; stroke: #2a5f7f; stroke-width: 1.4; }
+          .mp-t    { font: 600 12px 'Inter Tight', sans-serif; fill: #1a1a1a; text-anchor: middle; }
+          .mp-ts   { font: 500 10px 'JetBrains Mono', monospace; fill: #2a5f7f; text-anchor: middle; }
+          .mp-l    { font: italic 600 11px 'Fraunces', serif; fill: #c5410f; text-anchor: middle; }
+          .mp-ar   { stroke: #c5410f; stroke-width: 1.5; fill: none; marker-end: url(#mp-h); }
+        </style>
+        <defs>
+          <marker id="mp-h" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#c5410f"/>
+          </marker>
+        </defs>
+
+        <rect class="mp-box" x="30" y="30" width="130" height="38" rx="3"/>
+        <text class="mp-t"  x="95" y="48">1. Inicialización</text>
+        <text class="mp-ts" x="95" y="62">Init · rank · size</text>
+
+        <rect class="mp-box2" x="190" y="30" width="130" height="38" rx="3"/>
+        <text class="mp-t"  x="255" y="48">2. Distribución</text>
+        <text class="mp-ts" x="255" y="62">Bcast · Scatter</text>
+
+        <rect class="mp-box2" x="350" y="30" width="130" height="38" rx="3"/>
+        <text class="mp-t"  x="415" y="48">3. Cómputo local</text>
+        <text class="mp-ts" x="415" y="62">bucle según rank</text>
+
+        <rect class="mp-box2" x="510" y="30" width="130" height="38" rx="3"/>
+        <text class="mp-t"  x="575" y="48">4. Combinación</text>
+        <text class="mp-ts" x="575" y="62">Reduce · Gather</text>
+
+        <path class="mp-ar" d="M 160 49 L 188 49"/>
+        <path class="mp-ar" d="M 320 49 L 348 49"/>
+        <path class="mp-ar" d="M 480 49 L 508 49"/>
+
+        <rect class="mp-box" x="510" y="120" width="130" height="38" rx="3"/>
+        <text class="mp-t"  x="575" y="138">5. Salida (root)</text>
+        <text class="mp-ts" x="575" y="152">printf si rank == 0</text>
+
+        <rect class="mp-box" x="350" y="120" width="130" height="38" rx="3"/>
+        <text class="mp-t"  x="415" y="138">6. Finalize</text>
+        <text class="mp-ts" x="415" y="152">cierre MPI</text>
+
+        <path class="mp-ar" d="M 575 68 L 575 118"/>
+        <path class="mp-ar" d="M 510 138 L 482 138"/>
+
+        <text class="mp-l" x="360" y="195">Patrón canónico: identificarme → recibir lo mío → calcular lo mío → contribuir al total</text>
+      </svg>
+      <p class="caption">Las cinco fases típicas. Casi todos los programas MPI del temario encajan en este esqueleto, cambiando qué se distribuye, cómo se calcula y cómo se combina.</p>
+    </div>
+
+    <h4>Ejemplo guiado: producto escalar paralelo</h4>
+    <p>Queremos calcular Σ a[i] · b[i] con n procesos. Aplicamos la cadena:</p>
+    <ol>
+      <li>«¿Cómo reparto?» → cada proceso recibe <code>local_n = n/nproc</code> elementos consecutivos de a y b.</li>
+      <li>«¿Cada proceso qué calcula?» → su producto escalar local <code>local_dot = Σ a_local[i]*b_local[i]</code>.</li>
+      <li>«¿Cómo se combinan?» → reducción suma al root con <code>MPI_Reduce(MPI_SUM)</code>.</li>
+    </ol>
+
+<pre><code><span class="kw">int</span> local_n = n / nproc;
+<span class="kw">double</span> *a_local = malloc(local_n * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+<span class="kw">double</span> *b_local = malloc(local_n * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+
+<span class="fn">MPI_Scatter</span>(a, local_n, MPI_DOUBLE, a_local, local_n, MPI_DOUBLE, <span class="nm">0</span>, MPI_COMM_WORLD);
+<span class="fn">MPI_Scatter</span>(b, local_n, MPI_DOUBLE, b_local, local_n, MPI_DOUBLE, <span class="nm">0</span>, MPI_COMM_WORLD);
+
+<span class="kw">double</span> local_dot = <span class="nm">0.0</span>;
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; local_n; i++)
+    local_dot += a_local[i] * b_local[i];
+
+<span class="kw">double</span> total_dot;
+<span class="fn">MPI_Reduce</span>(&amp;local_dot, &amp;total_dot, <span class="nm">1</span>, MPI_DOUBLE, MPI_SUM, <span class="nm">0</span>, MPI_COMM_WORLD);
+
+<span class="kw">if</span> (rank == <span class="nm">0</span>) printf(<span class="st">"a·b = %f\n"</span>, total_dot);</code></pre>
+
+    <h3>CUDA — modelo mental</h3>
+
+    <h4>Decisiones que hay que tomar, en orden</h4>
+    <ol>
+      <li><strong>¿Tiene sentido usar GPU?</strong> Necesitamos miles o millones de elementos independientes a procesar. Si son cientos o hay mucha lógica condicional, la CPU gana.</li>
+      <li><strong>Identificar el kernel</strong>: ¿qué operación se aplica idénticamente a muchos elementos? Esa es la función a escribir con <code>__global__</code>.</li>
+      <li><strong>Mapear datos a hilos</strong>: ¿cuántos hilos lanzo? Uno por elemento es lo habitual. Ese hilo calculará su índice a partir de <code>blockIdx.x</code>, <code>blockDim.x</code>, <code>threadIdx.x</code>.</li>
+      <li><strong>Dimensionar grid y bloque</strong>: tamaño de bloque típico 128, 256 ó 512 (múltiplo de 32, el tamaño del warp). Número de bloques: <code>ceil(n/B) = (n + B − 1) / B</code>.</li>
+      <li><strong>Gestionar memoria</strong>: las cinco fases canónicas (malloc → memcpy H→D → kernel → memcpy D→H → free).</li>
+      <li><strong>¿Cooperación entre hilos?</strong> Si los hilos de un mismo bloque necesitan compartir datos (típico en reducciones intra-bloque o stencils), usar <code>__shared__</code> y sincronizar con <code>__syncthreads()</code>.</li>
+      <li><strong>Comprobar fronteras</strong>: cuando n no es múltiplo del tamaño de bloque, los hilos sobrantes deben saltarse el trabajo con <code>if (i &lt; n)</code>.</li>
+    </ol>
+
+    <h4>Ejemplo guiado: y = α x + y (SAXPY) — el «hola mundo» de CUDA</h4>
+
+<pre><code><span class="cm">// Kernel: lo que ejecuta CADA hilo</span>
+__global__
+<span class="kw">void</span> saxpy_kernel(<span class="kw">int</span> n, <span class="kw">float</span> alpha, <span class="kw">float</span> *x, <span class="kw">float</span> *y) {
+    <span class="kw">int</span> i = blockIdx.x * blockDim.x + threadIdx.x;     <span class="cm">// mi índice global</span>
+    <span class="kw">if</span> (i &lt; n) y[i] = alpha * x[i] + y[i];             <span class="cm">// guarda fronteriza</span>
+}
+
+<span class="kw">int</span> main() {
+    <span class="kw">int</span>    n     = <span class="nm">1</span> &lt;&lt; <span class="nm">20</span>;                  <span class="cm">// 2^20 elementos</span>
+    <span class="kw">size_t</span> bytes = n * <span class="kw">sizeof</span>(<span class="kw">float</span>);
+    <span class="kw">float</span>  alpha = <span class="nm">2.0f</span>;
+
+    <span class="cm">// Buffers en host</span>
+    <span class="kw">float</span> *x = (<span class="kw">float</span>*) malloc(bytes);
+    <span class="kw">float</span> *y = (<span class="kw">float</span>*) malloc(bytes);
+    <span class="cm">// ... inicializar x e y ...</span>
+
+    <span class="cm">// 1. Reservar memoria en device</span>
+    <span class="kw">float</span> *d_x, *d_y;
+    cudaMalloc(&amp;d_x, bytes);
+    cudaMalloc(&amp;d_y, bytes);
+
+    <span class="cm">// 2. Copiar host → device</span>
+    cudaMemcpy(d_x, x, bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_y, y, bytes, cudaMemcpyHostToDevice);
+
+    <span class="cm">// 3. Lanzar kernel</span>
+    <span class="kw">int</span> B = <span class="nm">256</span>;                            <span class="cm">// tamaño de bloque</span>
+    <span class="kw">int</span> G = (n + B - <span class="nm">1</span>) / B;                <span class="cm">// número de bloques (techo)</span>
+    saxpy_kernel&lt;&lt;&lt;G, B&gt;&gt;&gt;(n, alpha, d_x, d_y);
+
+    <span class="cm">// 4. Copiar resultado device → host</span>
+    cudaMemcpy(y, d_y, bytes, cudaMemcpyDeviceToHost);
+
+    <span class="cm">// 5. Liberar memoria</span>
+    cudaFree(d_x); cudaFree(d_y);
+    free(x); free(y);
+    <span class="kw">return</span> <span class="nm">0</span>;
+}</code></pre>
+
+    <h4>Variables y constructos de un programa CUDA</h4>
+    <table>
+      <tr><th>Elemento</th><th>Dónde vive</th><th>Significado</th></tr>
+      <tr><td><code>x</code>, <code>y</code></td><td>host (CPU)</td><td>Arrays originales. Reservados con <code>malloc</code> tradicional.</td></tr>
+      <tr><td><code>d_x</code>, <code>d_y</code></td><td>device (GPU)</td><td>Punteros a memoria GPU. La convención <code>d_</code> ayuda a no confundir con los de host. Reservados con <code>cudaMalloc</code>.</td></tr>
+      <tr><td><code>n</code></td><td>host y device</td><td>Tamaño del problema. Se pasa como argumento al kernel (CUDA copia el valor a la GPU automáticamente).</td></tr>
+      <tr><td><code>alpha</code></td><td>host y device</td><td>Escalar. También pasado por valor al kernel.</td></tr>
+      <tr><td><code>B</code> (blockDim.x)</td><td>host</td><td>Tamaño de bloque: cuántos hilos por bloque. Múltiplo de 32 (warp). Típicos: 128, 256, 512.</td></tr>
+      <tr><td><code>G</code> (gridDim.x)</td><td>host</td><td>Número de bloques. Calculado con <em>techo</em>: <code>(n + B − 1) / B</code> para cubrir todo n.</td></tr>
+      <tr><td><code>threadIdx.x</code></td><td>device (built-in)</td><td>Índice del hilo dentro de su bloque (0..B−1). Variable predefinida; <em>no se declara</em>.</td></tr>
+      <tr><td><code>blockIdx.x</code></td><td>device (built-in)</td><td>Índice del bloque dentro de la grid (0..G−1). Predefinida.</td></tr>
+      <tr><td><code>blockDim.x</code></td><td>device (built-in)</td><td>Tamaño de cada bloque. Igual a la <code>B</code> que pasamos al lanzar. Predefinida.</td></tr>
+      <tr><td><code>i</code></td><td>device (registro)</td><td>Índice global del hilo en el problema: combina las tres anteriores. <em>El hilo (blockIdx.x, threadIdx.x) se ocupa del elemento i</em>.</td></tr>
+      <tr><td><code>__global__</code></td><td>cualificador</td><td>Indica que la función es un kernel: se llama desde host, ejecuta en device.</td></tr>
+      <tr><td><code>&lt;&lt;&lt;G, B&gt;&gt;&gt;</code></td><td>sintaxis de lanzamiento</td><td>Configuración del kernel: G bloques de B hilos cada uno. Total de hilos = G × B.</td></tr>
+    </table>
+
+    <h4>Fórmula clave del kernel</h4>
+    <p>Esta línea aparece en casi todo kernel 1D y conviene tenerla automatizada en la cabeza:</p>
+<pre><code><span class="kw">int</span> i = blockIdx.x * blockDim.x + threadIdx.x;</code></pre>
+    <p><strong>Cómo se lee</strong>: «de los <code>blockIdx.x</code> bloques que vienen antes, cada uno tiene <code>blockDim.x</code> hilos; dentro de mi bloque soy el hilo número <code>threadIdx.x</code>». El resultado es mi posición lineal global, que uso para indexar arrays.</p>
+
+    <p>Si trabajas en 2D (matrices), repites en las dos dimensiones: <code>row = blockIdx.y*blockDim.y + threadIdx.y; col = blockIdx.x*blockDim.x + threadIdx.x;</code></p>
+
+    <h3>Comparación rápida: el mismo problema en las tres tecnologías</h3>
+    <p>Suma de un array a[n] resuelta con los tres modelos. Observa cómo cambian las decisiones:</p>
+
+    <div class="comparison">
+      <div class="col">
+        <h4>OpenMP</h4>
+<pre style="font-size:0.85rem;"><code><span class="kw">double</span> s = <span class="nm">0</span>;
+<span class="pr">#pragma omp parallel for</span> \
+        reduction(+: s)
+<span class="kw">for</span> (<span class="kw">int</span> i = <span class="nm">0</span>; i &lt; n; i++)
+    s += a[i];</code></pre>
+        <p style="font-size:0.9rem;">Una directiva. El runtime se encarga de todo: crear hilos, repartir iteraciones, combinar copias locales.</p>
+      </div>
+      <div class="col alt">
+        <h4>MPI</h4>
+<pre style="font-size:0.85rem;"><code><span class="kw">double</span> ls = <span class="nm">0</span>, gs;
+<span class="kw">for</span> (<span class="kw">int</span> i = rank;
+     i &lt; n;
+     i += nproc)
+    ls += a[i];
+<span class="fn">MPI_Reduce</span>(&amp;ls,&amp;gs,<span class="nm">1</span>,
+   MPI_DOUBLE,MPI_SUM,<span class="nm">0</span>,
+   MPI_COMM_WORLD);</code></pre>
+        <p style="font-size:0.9rem;">Reparto manual con <code>rank</code>+<code>nproc</code>, suma local explícita, comunicación con <code>Reduce</code>.</p>
+      </div>
+      <div class="col">
+        <h4>CUDA</h4>
+<pre style="font-size:0.85rem;"><code><span class="cm">// Necesita reducción
+// intra-bloque con
+// __shared__ +
+// __syncthreads y
+// luego reducción
+// entre bloques.
+// Más complejo que
+// los otros dos.</span></code></pre>
+        <p style="font-size:0.9rem;">CUDA brilla en operaciones <em>map</em> (independientes). Las reducciones requieren patrón especializado o usar cuBLAS/Thrust.</p>
+      </div>
+    </div>
+
+    <div class="learning-hint">
+      <strong>Moraleja</strong>: cada tecnología optimiza un tipo de paralelismo. OpenMP es el más expresivo para un nodo multicore con código compartido. MPI es el más explícito pero el único que escala fuera del nodo. CUDA es el más rápido cuando hay miles de elementos a procesar independientemente, a cambio de complicar reducciones y operaciones con dependencias.
+    </div>
   </section>
 
   <section>
@@ -758,6 +1215,160 @@ omp_set_num_threads(<span class="nm">2</span>);
       </div>
     </div>
   </section>
+
+  <section>
+    <h2>Bloque IX · Explicaciones razonadas del Bloque III-IV (sesiones 6-12)</h2>
+    <p>Aquí no hay tarjetas ni test: hay <strong>explicaciones</strong>. Una sección por sesión, en prosa, con la lógica detrás de cada concepto, las fórmulas que no están en la chuleta y los matices que suelen colarse en preguntas cortas del examen. Léelo como si te lo estuviera contando alguien que ya lo sabe.</p>
+
+    <!-- =================== SESIÓN 6 =================== -->
+    <h3>Sesión 6 · Análisis de algoritmos paralelos</h3>
+
+    <h4>¿Por qué medimos?</h4>
+    <p>Un algoritmo paralelo se diseña <em>para correr más rápido</em>, no por estética. Para saber si lo conseguimos necesitamos tres preguntas: ¿cuánto se acelera?, ¿usamos bien los procesadores?, ¿escala cuando crecemos? Las tres tienen una métrica concreta.</p>
+
+    <h4>Speed-up y eficiencia: qué dicen realmente</h4>
+    <p>El <strong>speed-up</strong> <code>S(p) = T<sub>1</sub> / T<sub>p</sub></code> compara el tiempo del <em>mejor secuencial</em> con el del paralelo en <em>p</em> procesadores. Cuidado con el numerador: si usas como <code>T<sub>1</sub></code> tu propio paralelo lanzado con un único hilo, estás haciendo trampa, porque ese código arrastra overhead. Lo correcto es el algoritmo secuencial óptimo.</p>
+    <p>La <strong>eficiencia</strong> <code>E(p) = S(p) / p</code> es el speed-up por procesador. Si <code>E = 1</code>, estás aprovechando cada uno al 100 %. En la práctica <code>E &lt; 1</code> casi siempre: hay comunicación, sincronización y partes serie. Una eficiencia de 0,7 con 64 procesadores ya es <em>muy</em> buena.</p>
+    <p>El <strong>coste</strong> es <code>C(p) = p · T<sub>p</sub></code>: el tiempo total agregado de procesador (como sumar horas de trabajo). Un algoritmo se llama <em>coste-óptimo</em> si <code>C(p) = Θ(T<sub>1</sub>)</code>, es decir, no estás malgastando trabajo respecto al secuencial.</p>
+
+    <h4>La ley de Amdahl, explicada con un ejemplo</h4>
+    <p>Si una fracción <em>s</em> del tiempo es estrictamente serie y el resto <em>(1−s)</em> paraleliza perfectamente, el speed-up máximo es <code>S(p) ≤ 1 / (s + (1−s)/p)</code>. La parte serie no se acelera; cuando <em>p</em> tiende a infinito, el segundo término se anula y queda <code>S<sub>∞</sub> = 1/s</code>.</p>
+    <p>Ejemplo: si <em>s</em> = 5 % (= 0,05), el techo es 1/0,05 = <strong>20</strong>. Aunque tengas mil procesadores, no pasarás de 20×. La lectura práctica: <em>optimiza la parte serie antes de comprar más nodos</em>.</p>
+
+    <h4>El modelo t<sub>s</sub> + n·t<sub>w</sub></h4>
+    <p>Comunicar <em>n</em> datos cuesta <code>t<sub>com</sub> = t<sub>s</sub> + n·t<sub>w</sub></code>: una <strong>latencia</strong> fija <em>t<sub>s</sub></em> (coste de arrancar el mensaje, ronda los microsegundos) más un <strong>ancho de banda inverso</strong> <em>t<sub>w</sub></em> por dato. Consecuencia directa: mandar mil mensajes de un byte es muchísimo más caro que un mensaje de mil bytes. De ahí la regla de oro <em>agrupa mensajes</em>.</p>
+    <p>El tiempo total paralelo se modela como <code>T<sub>p</sub> = T<sub>cómputo</sub>/p + T<sub>com</sub>(p) + T<sub>ocio</sub></code>. Para que el paralelismo gane, el cómputo tiene que dominar; si la comunicación crece tan rápido como el reparto del trabajo, la curva de speed-up se aplana o incluso baja al subir <em>p</em> (<em>slowdown</em>).</p>
+
+    <h4>Escalabilidad e isoeficiencia</h4>
+    <p>Un algoritmo es <strong>escalable</strong> si, al aumentar <em>p</em>, se puede mantener la eficiencia subiendo el tamaño del problema <em>n</em>. La función de <strong>isoeficiencia</strong> dice <em>cuánto</em> hay que aumentar <em>n</em> en función de <em>p</em> para que <em>E</em> se mantenga constante. Si crece lentamente (lineal en <em>p</em>), el algoritmo escala bien; si crece como <code>p²</code> o peor, no escala.</p>
+
+    <!-- =================== SESIÓN 7 =================== -->
+    <h3>Sesión 7 · Metodología de diseño (PCAM de Foster)</h3>
+
+    <h4>¿Para qué sirve PCAM?</h4>
+    <p>Diseñar un algoritmo paralelo "a ojo" lleva a soluciones acopladas a la máquina y difíciles de migrar. Foster propone separar el <em>qué se puede paralelizar</em> (Partición y Comunicación) del <em>cómo lo ejecuto en mi hardware</em> (Aglomeración y Mapeo). Las dos primeras fases son abstractas; las dos últimas son físicas.</p>
+
+    <h4>Particionado: descomponer al máximo</h4>
+    <p>Se identifican las tareas más pequeñas posibles, ignorando el número real de procesadores. Hay dos estilos:</p>
+    <ul>
+      <li><strong>Descomposición de dominio</strong>: troceamos los <em>datos</em>. Cada tarea trabaja sobre un subconjunto. Es la natural en mallas, vectores, matrices, imágenes.</li>
+      <li><strong>Descomposición funcional</strong>: troceamos las <em>operaciones</em>. Cada tarea hace una función distinta sobre el mismo dato. Es la natural en pipelines y procesadores de eventos.</li>
+    </ul>
+
+    <h4>Comunicación: dependencias entre tareas</h4>
+    <p>Se marca qué datos necesita cada tarea de cuáles otras. Distinguimos comunicación <strong>local</strong> (entre vecinos, típica de stencils) de <strong>global</strong> (todos con todos, típica de reducciones o FFT), y comunicación <strong>estática</strong> (patrón fijo, conocido en compilación) de <strong>dinámica</strong> (depende del estado en ejecución, p. ej. ramificación en B&amp;B).</p>
+
+    <h4>Aglomeración: agrupar para reducir overhead</h4>
+    <p>Las tareas mínimas suelen ser <em>demasiadas</em>. Si cada una hace 10 µs de cómputo y necesita 50 µs de comunicación, perdemos. Por eso se agrupan tareas vecinas en bloques más grandes con tres objetivos: (1) bajar el ratio comunicación/cómputo, (2) reducir el número de mensajes, (3) preservar suficiente paralelismo para todos los procesadores.</p>
+
+    <h4>Mapeo: asignación a procesadores físicos</h4>
+    <p>El último paso decide qué aglomerado corre dónde. Las dos consideraciones clave son <strong>balance de carga</strong> (que ningún procesador termine mucho antes que otros) y <strong>localidad</strong> (que las tareas que se comunican mucho estén cerca). Si la carga es regular, mapeo estático cíclico o por bloques. Si es irregular o dinámica, mapeo por <em>bolsa de tareas</em> (lo veremos en la sesión 12).</p>
+
+    <!-- =================== SESIÓN 8 =================== -->
+    <h3>Sesión 8 · Paralelismo de datos</h3>
+
+    <h4>La idea</h4>
+    <p>Aplicar la <em>misma operación</em> a una colección grande de datos independientes. Es el esquema más simple y el que mejor escala, porque el paralelismo es masivo y el patrón de acceso es regular. Cubre desde <code>y = αx + y</code> (SAXPY) hasta multiplicaciones matriciales, filtros de imagen y simulaciones físicas paso a paso.</p>
+
+    <h4>SIMD, SPMD, SIMT: matices</h4>
+    <p><strong>SIMD</strong> es hardware: una instrucción opera sobre varios registros a la vez (AVX en CPU, unidades vectoriales). <strong>SPMD</strong> es software: todos los procesos ejecutan el mismo programa pero cada uno opera sobre sus datos (modelo MPI). <strong>SIMT</strong> es la mezcla de NVIDIA: cada hilo CUDA tiene su propio contador de programa, pero la unidad de planificación (<em>warp</em>) ejecuta 32 hilos a la vez como SIMD. Tres niveles distintos, los tres son paralelismo de datos.</p>
+
+    <h4>Balance de carga: el problema oculto</h4>
+    <p>Si la operación cuesta lo mismo por dato (suma de vectores), una división por bloques es óptima. Si el coste varía por dato (Mandelbrot: cada píxel necesita un número distinto de iteraciones), un reparto por bloques deja procesadores ociosos. Soluciones: <strong>distribución cíclica</strong> (cada uno coge los datos <em>i, i+p, i+2p…</em>, mezcla zonas caras y baratas) o <strong>schedule dynamic</strong> en OpenMP / bolsa de tareas en MPI.</p>
+
+    <h4>Comunicación en paralelismo de datos</h4>
+    <p>Cuando hay <em>fronteras</em> (stencil: cada celda depende de sus vecinas), la descomposición regular implica intercambiar <em>halos</em> en cada paso: una fila/columna con los procesos vecinos. El cómputo crece con el área del bloque (n²), la comunicación con su perímetro (n), así que bloques grandes → mejor relación. Esto justifica por qué en una matriz se prefieren <em>submatrices cuadradas</em> antes que franjas largas.</p>
+
+    <!-- =================== SESIÓN 9 =================== -->
+    <h3>Sesión 9 · Paralelismo síncrono y relajado</h3>
+
+    <h4>Síncrono: barreras en cada paso</h4>
+    <p>En problemas iterativos (Jacobi, calor, juego de la vida) cada paso usa los <em>valores del paso anterior</em>. Para garantizarlo, todos los procesos calculan, intercambian fronteras y <strong>sincronizan</strong> con una barrera antes del siguiente paso. Es determinista, reproducible y fácil de razonar, pero el procesador más lento marca el ritmo.</p>
+
+    <h4>Doble buffer</h4>
+    <p>Para no pisar valores que aún se leen, se usan dos arreglos: <code>U_old</code> (lectura) y <code>U_new</code> (escritura). Al final del paso se intercambian (basta intercambiar punteros, no copiar). Esto desacopla lectura de escritura y permite paralelizar el cuerpo del bucle sin condiciones de carrera.</p>
+
+    <h4>Relajado: renunciar a la sincronía global</h4>
+    <p>Si el algoritmo <em>converge</em> aunque cada proceso lea valores algo desactualizados, podemos quitar la barrera. Gauss-Seidel asíncrono, métodos de relajación, metaheurísticas (algoritmos genéticos paralelos, enjambre) caben aquí. Ganamos tiempo (el más rápido no espera al más lento) pero perdemos determinismo: la trayectoria depende del orden real de ejecución. Solo se aplica cuando hay garantías teóricas de convergencia.</p>
+
+    <h4>Solapar comunicación y cómputo</h4>
+    <p>Truco clave incluso en el caso síncrono: lanzar la comunicación de fronteras con <code>MPI_Isend</code>/<code>Irecv</code> <em>antes</em> de calcular el interior del dominio (que no depende de los vecinos). Cuando termina ese cómputo interno, los halos ya han llegado y solo queda actualizar la frontera. La comunicación cuesta "gratis" porque se hace en paralelo con cómputo útil.</p>
+
+    <!-- =================== SESIÓN 10 =================== -->
+    <h3>Sesión 10 · Grafo de dependencias y pipeline</h3>
+
+    <h4>Grafo de tareas (DAG)</h4>
+    <p>Cuando las tareas tienen dependencias arbitrarias (no son todas iguales), se modelan como un grafo dirigido acíclico: nodos = tareas, arcos = "esta tarea necesita la salida de aquella". El tiempo paralelo mínimo está acotado inferiormente por el <strong>camino crítico</strong>: la cadena más larga de tareas dependientes. Aunque tengas infinitos procesadores, no bajas de la suma de tiempos en ese camino.</p>
+    <p>Implicación práctica: para acelerar, hay que acortar el camino crítico (paralelizar las tareas que están en él), no añadir procesadores a tareas fuera del camino.</p>
+
+    <h4>Pipeline (segmentación)</h4>
+    <p>Caso particular de grafo: cadena lineal de etapas <em>E<sub>1</sub> → E<sub>2</sub> → … → E<sub>k</sub></em>. Cada etapa procesa un elemento y lo pasa a la siguiente. En régimen permanente las <em>k</em> etapas trabajan a la vez sobre <em>k</em> elementos distintos del flujo.</p>
+    <ul>
+      <li><strong>Latencia</strong>: tiempo que tarda <em>un</em> elemento en cruzar el pipeline = suma de tiempos de etapa.</li>
+      <li><strong>Throughput</strong>: elementos procesados por unidad de tiempo en régimen permanente = 1 / (tiempo de la etapa más lenta). El <strong>cuello de botella</strong> manda.</li>
+      <li><strong>Speed-up ideal</strong>: <em>k</em>, alcanzable solo si las etapas están balanceadas. Si una etapa duplica las demás, replícala o redistribuye el trabajo.</li>
+    </ul>
+
+    <h4>¿Cuántas etapas?</h4>
+    <p>Más etapas → más paralelismo potencial, pero también más comunicación entre etapas y más latencia inicial (hay que llenar el pipeline). El óptimo aparece cuando todas las etapas tardan parecido y la comunicación entre ellas no domina.</p>
+
+    <!-- =================== SESIÓN 11 =================== -->
+    <h3>Sesión 11 · Divide y vencerás y programación dinámica</h3>
+
+    <h4>Divide y vencerás paralelo</h4>
+    <p>Estructura recursiva: divide el problema, resuelve recursivamente las partes (en paralelo) y combina. Quicksort, mergesort, FFT, multiplicación de matrices de Strassen siguen este patrón. En OpenMP se expresa de forma directa con <code>#pragma omp task</code>; en MPI mediante reparto inicial entre procesos.</p>
+
+    <h4>Granularidad y umbral de corte</h4>
+    <p>El problema crítico es la <strong>granularidad</strong>: si seguimos subdividiendo hasta tamaños minúsculos, el coste de crear tareas y comunicar supera el de calcular. Por eso se fija un <em>umbral</em>: cuando el subproblema es más pequeño que ese tamaño, se resuelve secuencialmente sin crear nueva tarea. Es el equivalente paralelo de "para arrays pequeños, mejor inserción que quicksort".</p>
+
+    <h4>Combinación: el cuello escondido</h4>
+    <p>La fase de combinar (merge) es a menudo secuencial y puede dominar el tiempo total. Acelerarla (merge paralelo, reducción en árbol) es lo que define un buen algoritmo D&amp;V paralelo.</p>
+
+    <h4>Programación dinámica paralela</h4>
+    <p>PD rellena una tabla en la que cada celda depende de otras anteriores. La clave es ver el <strong>frente de onda</strong>: el conjunto de celdas que pueden calcularse a la vez porque sus dependencias ya están listas. Ejemplos:</p>
+    <ul>
+      <li><strong>Alineamiento de secuencias</strong> (Needleman-Wunsch): cada celda <em>(i,j)</em> depende de <em>(i−1,j)</em>, <em>(i,j−1)</em> y <em>(i−1,j−1)</em>. Las antidiagonales son frentes de onda independientes.</li>
+      <li><strong>Floyd-Warshall</strong>: para cada <em>k</em>, la matriz se actualiza en función de la columna y la fila <em>k</em>. Las filas dentro de un mismo <em>k</em> son independientes; el bucle externo en <em>k</em> es serie.</li>
+    </ul>
+    <p>La regla general: el bucle paralelizable es el que recorre celdas de un mismo frente; el que las atraviesa de un frente al siguiente debe quedar serie.</p>
+
+    <!-- =================== SESIÓN 12 =================== -->
+    <h3>Sesión 12 · Trabajadores replicados y branch &amp; bound</h3>
+
+    <h4>Bolsa de tareas (replicated workers)</h4>
+    <p>Patrón maestro-trabajadores con una <strong>cola común</strong> de tareas. Cada worker, en cuanto termina una tarea, pide la siguiente. Resuelve el problema de balance de carga cuando las tareas tienen costes muy distintos y desconocidos a priori: backtracking, ray tracing, búsquedas heurísticas. La cola puede ser centralizada (maestro reparte) o distribuida (work stealing: los workers se roban tareas entre sí cuando se quedan sin trabajo).</p>
+
+    <h4>El problema de la terminación</h4>
+    <p>¿Cuándo paramos? No basta con que un worker tenga la cola vacía: puede que otro le envíe una nueva tarea (porque está generando ramas en B&amp;B, por ejemplo). Si paramos demasiado pronto, perdemos resultados. Soluciones clásicas:</p>
+    <ul>
+      <li><strong>Algoritmo del testigo de Dijkstra</strong>: un testigo circula entre los procesos; solo se considera terminado si completa una vuelta entera sin encontrar a nadie con trabajo pendiente y sin mensajes en vuelo.</li>
+      <li><strong>Contadores de mensajes</strong>: cada proceso lleva cuenta de mensajes enviados y recibidos; cuando los totales globales cuadran y todas las colas están vacías, hay terminación.</li>
+    </ul>
+
+    <h4>Branch &amp; bound paralelo</h4>
+    <p>Variante de backtracking que mantiene una <strong>cota</strong> (mejor solución encontrada hasta el momento) y <em>poda</em> ramas cuyo cálculo demuestra que no pueden mejorarla. En paralelo:</p>
+    <ul>
+      <li>Cada worker explora un subárbol y mantiene una <em>cota global</em> que se difunde cuando se mejora (broadcast asíncrono al resto de procesos).</li>
+      <li>Una buena cota inicial reduce muchísimo el trabajo total. Por eso a veces conviene hacer una búsqueda <em>greedy</em> serie primero, para sembrar una cota razonable, antes de lanzar la exploración paralela.</li>
+    </ul>
+
+    <h4>Anomalías de speed-up</h4>
+    <p>Curiosidad importante: en B&amp;B paralelo pueden aparecer <strong>aceleraciones superlineales</strong> (speed-up &gt; p) y también <em>slowdown</em>, según el orden en que se exploran las ramas. Si un worker encuentra rápido una cota buena, los demás podan masivamente y el trabajo total cae por debajo del secuencial. Si los workers exploran ramas inútiles antes que el secuencial habría visitado, el trabajo total sube. Es el único esquema del temario donde estas anomalías son esperables.</p>
+
+    <!-- =================== Cierre transversal =================== -->
+    <h3>Síntesis cruzada: cómo encajan los esquemas</h3>
+    <p>Una forma útil de organizar el bloque IV en la cabeza:</p>
+    <ul>
+      <li>Si las tareas son <em>iguales y los datos regulares</em> → paralelismo de datos.</li>
+      <li>Si hay <em>iteración con dependencia del paso anterior</em> → síncrono (o relajado si tolera asincronía).</li>
+      <li>Si hay <em>dependencias arbitrarias</em> → grafo; si son lineales → pipeline.</li>
+      <li>Si el problema es <em>recursivo</em> → divide y vencerás.</li>
+      <li>Si la solución se construye sobre <em>tabla con dependencias entre celdas</em> → PD con frente de onda.</li>
+      <li>Si las tareas <em>se generan en ejecución y son irregulares</em> → trabajadores replicados; si además hay <em>poda</em>, B&amp;B.</li>
+    </ul>
+    <p>Y la regla cruzada con la sesión 6: cualquiera de ellos solo escala si la comunicación crece más despacio que el cómputo. La elección de esquema condiciona ese ratio tanto como la elección de hardware.</p>
+  </section>
+
 
   <section>
     <h2>Antes del examen: lista de comprobación</h2>
