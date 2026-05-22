@@ -303,21 +303,32 @@
     </div>
 
     <h3>4.3 · El envío punto a punto (lo más importante)</h3>
-<pre><code>MPI_Send(buffer, count, datatype, dest,   tag, comm);
-MPI_Recv(buffer, count, datatype, source, tag, comm, &amp;status);</code></pre>
+<pre><code><span class="kw">int</span> MPI_Send(<span class="kw">const void</span> *buffer, <span class="kw">int</span> count, MPI_Datatype datatype,
+             <span class="kw">int</span> dest,   <span class="kw">int</span> tag, MPI_Comm comm);
 
-    <p>Estos dos son los que más se preguntan. Cada parámetro tiene un papel claro:</p>
+<span class="kw">int</span> MPI_Recv(<span class="kw">void</span> *buffer, <span class="kw">int</span> count, MPI_Datatype datatype,
+             <span class="kw">int</span> source, <span class="kw">int</span> tag, MPI_Comm comm,
+             MPI_Status *status);</code></pre>
+
+    <p>Estas son las firmas reales. Las dos funciones devuelven un <code>int</code> (código de error; <code>MPI_SUCCESS</code> = 0 si todo bien). Cada parámetro tiene un papel concreto:</p>
 
     <table class="var-table">
-      <tr><th>Parámetro</th><th>Qué es</th><th>En Send</th><th>En Recv</th></tr>
-      <tr><td>buffer</td><td>Puntero a los datos</td><td>De dónde leer para enviar</td><td>Dónde guardar lo recibido</td></tr>
-      <tr><td>count</td><td>Cuántos elementos</td><td>Cuántos mando</td><td>Cuántos espero como máximo</td></tr>
-      <tr><td>datatype</td><td>Tipo de cada elemento</td><td>MPI_INT, MPI_DOUBLE, MPI_CHAR...</td><td>Mismo tipo que el envío</td></tr>
-      <tr><td>dest / source</td><td>Rank del otro extremo</td><td>A quién se lo mando</td><td>De quién lo espero (o MPI_ANY_SOURCE)</td></tr>
-      <tr><td>tag</td><td>Etiqueta entera</td><td>Para distinguir mensajes</td><td>Solo coge mensajes con esta etiqueta (o MPI_ANY_TAG)</td></tr>
-      <tr><td>comm</td><td>Comunicador</td><td>Normalmente MPI_COMM_WORLD</td><td>Idem</td></tr>
-      <tr><td>status</td><td>Info del recibido</td><td>—</td><td>Te dice de quién y qué tag llegó realmente</td></tr>
+      <tr><th>Parámetro</th><th>Tipo C</th><th>Qué es</th><th>En Send</th><th>En Recv</th></tr>
+      <tr><td>buffer</td><td>void* / const void*</td><td>Puntero al primer elemento de los datos</td><td>Dirección de memoria <em>desde</em> donde se leen los datos a enviar</td><td>Dirección de memoria <em>donde</em> se escribirán los datos recibidos</td></tr>
+      <tr><td>count</td><td>int</td><td>Número de elementos (no bytes)</td><td>Cuántos elementos mando (exacto)</td><td>Cuántos elementos <em>como máximo</em> caben en buffer. Si llegan menos, OK; si llegan más, error.</td></tr>
+      <tr><td>datatype</td><td>MPI_Datatype</td><td>Tipo MPI de cada elemento</td><td><code>MPI_INT</code>, <code>MPI_DOUBLE</code>, <code>MPI_CHAR</code>, <code>MPI_FLOAT</code>...</td><td>Tiene que coincidir con el del envío</td></tr>
+      <tr><td>dest / source</td><td>int</td><td>Rank del otro extremo</td><td>A qué proceso lo mando (0..size-1)</td><td>De qué proceso lo espero, o <code>MPI_ANY_SOURCE</code> para aceptar de cualquiera</td></tr>
+      <tr><td>tag</td><td>int</td><td>Etiqueta entera ≥ 0</td><td>Para clasificar mensajes (datos vs control, p. ej.)</td><td>Solo coge mensajes con esa etiqueta, o <code>MPI_ANY_TAG</code></td></tr>
+      <tr><td>comm</td><td>MPI_Comm</td><td>Comunicador (grupo de procesos)</td><td>Normalmente <code>MPI_COMM_WORLD</code></td><td>Tiene que ser el mismo que en el envío</td></tr>
+      <tr><td>status</td><td>MPI_Status*</td><td>Estructura de salida</td><td>—</td><td>MPI la rellena con info del mensaje real. Puedes usar <code>MPI_STATUS_IGNORE</code> si no te interesa.</td></tr>
     </table>
+
+    <p><strong>Qué contiene <code>MPI_Status</code></strong> después del Recv:</p>
+    <ul>
+      <li><code>status.MPI_SOURCE</code> → rank de quien envió de verdad (útil cuando usaste <code>MPI_ANY_SOURCE</code>).</li>
+      <li><code>status.MPI_TAG</code> → etiqueta con la que se envió (útil con <code>MPI_ANY_TAG</code>).</li>
+      <li><code>MPI_Get_count(&amp;status, datatype, &amp;n)</code> → para saber cuántos elementos llegaron <em>de verdad</em> (puede ser menor que <code>count</code>).</li>
+    </ul>
 
     <h4>Ejemplo concreto: el proceso 0 manda un entero al 1</h4>
 <pre><code><span class="kw">int</span> dato;
@@ -341,24 +352,92 @@ MPI_Recv(buffer, count, datatype, source, tag, comm, &amp;status);</code></pre>
       <tr><td>MPI_Ssend</td><td>Síncrono: <em>no</em> devuelve hasta que el receptor ha empezado a recibir. Útil para detectar deadlocks (si el envío estándar funciona pero el síncrono se bloquea, hay riesgo).</td></tr>
       <tr><td>MPI_Bsend</td><td>Buffered: copia a un buffer que tú has reservado con <code>MPI_Buffer_attach</code>. Devuelve siempre rápido.</td></tr>
       <tr><td>MPI_Rsend</td><td>Ready: optimizado pero <em>exige</em> que el recv ya esté lanzado, si no, error.</td></tr>
-      <tr><td>MPI_Isend / Irecv</td><td>No bloqueantes: devuelven inmediatamente con un <code>MPI_Request</code>. Luego haces <code>MPI_Wait(&amp;req,...)</code> para asegurarte de que terminó. Permite solapar comunicación y cómputo.</td></tr>
+      <tr><td>MPI_Isend / MPI_Irecv</td><td>No bloqueantes: devuelven inmediatamente con un <code>MPI_Request</code> de salida. Luego hay que esperar a que terminen.</td></tr>
     </table>
 
-    <h3>4.5 · Comunicaciones colectivas (todos a la vez)</h3>
-    <p>Cuando todos los procesos del comunicador participan en la misma operación. Tienen que ser llamadas por <em>todos</em>, si no, deadlock.</p>
+    <p>Las firmas de las no bloqueantes y de la espera:</p>
+<pre><code><span class="kw">int</span> MPI_Isend(<span class="kw">const void</span> *buf, <span class="kw">int</span> count, MPI_Datatype dt,
+              <span class="kw">int</span> dest, <span class="kw">int</span> tag, MPI_Comm comm,
+              MPI_Request *request);   <span class="cm">// igual que Send + request de salida</span>
+
+<span class="kw">int</span> MPI_Irecv(<span class="kw">void</span> *buf, <span class="kw">int</span> count, MPI_Datatype dt,
+              <span class="kw">int</span> source, <span class="kw">int</span> tag, MPI_Comm comm,
+              MPI_Request *request);   <span class="cm">// igual que Recv + request, sin status aquí</span>
+
+<span class="kw">int</span> MPI_Wait(MPI_Request *request, MPI_Status *status);
+<span class="kw">int</span> MPI_Waitall(<span class="kw">int</span> count, MPI_Request reqs[], MPI_Status stats[]);</code></pre>
 
     <table class="var-table">
-      <tr><th>Función</th><th>Qué hace</th></tr>
-      <tr><td>MPI_Bcast(buf, count, type, root, comm)</td><td>El proceso <em>root</em> manda <code>buf</code> a todos los demás. Todos terminan con la misma copia.</td></tr>
-      <tr><td>MPI_Scatter(sendbuf, sn, st, recvbuf, rn, rt, root, comm)</td><td>El root divide <code>sendbuf</code> en trozos iguales y manda un trozo a cada proceso (incluido él).</td></tr>
-      <tr><td>MPI_Gather(sendbuf, sn, st, recvbuf, rn, rt, root, comm)</td><td>Inversa de Scatter: cada proceso manda su trozo al root, que los junta en <code>recvbuf</code>.</td></tr>
-      <tr><td>MPI_Allgather(...)</td><td>Como Gather pero <em>todos</em> reciben el resultado completo (no solo el root).</td></tr>
-      <tr><td>MPI_Reduce(sendbuf, recvbuf, count, type, op, root, comm)</td><td>Combina valores de todos los procesos (suma, máx, mín...) y deposita el resultado en el root.</td></tr>
-      <tr><td>MPI_Allreduce(...)</td><td>Como Reduce pero el resultado va a todos.</td></tr>
-      <tr><td>MPI_Barrier(comm)</td><td>Todos esperan hasta que lleguen todos.</td></tr>
+      <tr><th>Parámetro</th><th>Tipo</th><th>Para qué</th></tr>
+      <tr><td>request</td><td>MPI_Request*</td><td>"Recibo" que identifica la operación pendiente. Lo crea Isend/Irecv, lo consume Wait.</td></tr>
+      <tr><td>status</td><td>MPI_Status*</td><td>En Wait, info del mensaje recibido (si era Irecv). Para Isend puedes pasar <code>MPI_STATUS_IGNORE</code>.</td></tr>
+      <tr><td>count, reqs[], stats[]</td><td>int, MPI_Request[], MPI_Status[]</td><td>En Waitall: cuántas operaciones esperas, array de requests y array de status.</td></tr>
     </table>
 
-    <p>Operaciones de reducción: <code>MPI_SUM</code>, <code>MPI_PROD</code>, <code>MPI_MAX</code>, <code>MPI_MIN</code>, <code>MPI_LAND</code>, <code>MPI_LOR</code>, <code>MPI_MAXLOC</code>, <code>MPI_MINLOC</code>.</p>
+    <p><strong>Patrón de uso típico para solapar comunicación y cómputo:</strong></p>
+<pre><code>MPI_Request req;
+MPI_Status  st;
+
+MPI_Irecv(buf, n, MPI_DOUBLE, vecino, 0, MPI_COMM_WORLD, &amp;req);
+
+<span class="cm">// Mientras llega el mensaje, hago cómputo útil que NO depende de buf</span>
+calcular_interior_del_dominio();
+
+MPI_Wait(&amp;req, &amp;st);   <span class="cm">// ahora sí, espero a que llegue buf</span>
+usar_buf();</code></pre>
+
+    <h3>4.5 · Comunicaciones colectivas (todos a la vez)</h3>
+    <p>Cuando todos los procesos del comunicador participan en la misma operación. Tienen que ser llamadas por <em>todos</em> los procesos del comunicador, si no, deadlock.</p>
+
+    <h4>Firmas con todos los parámetros</h4>
+<pre><code>MPI_Bcast    (<span class="kw">void</span>* buffer, <span class="kw">int</span> count, MPI_Datatype dt,
+                                              <span class="kw">int</span> root, MPI_Comm comm);
+
+MPI_Scatter  (<span class="kw">const void</span>* sendbuf, <span class="kw">int</span> sendcount, MPI_Datatype sendtype,
+              <span class="kw">void</span>*       recvbuf, <span class="kw">int</span> recvcount, MPI_Datatype recvtype,
+              <span class="kw">int</span> root, MPI_Comm comm);
+
+MPI_Gather   (<span class="kw">const void</span>* sendbuf, <span class="kw">int</span> sendcount, MPI_Datatype sendtype,
+              <span class="kw">void</span>*       recvbuf, <span class="kw">int</span> recvcount, MPI_Datatype recvtype,
+              <span class="kw">int</span> root, MPI_Comm comm);
+
+MPI_Allgather(<span class="kw">const void</span>* sendbuf, <span class="kw">int</span> sendcount, MPI_Datatype sendtype,
+              <span class="kw">void</span>*       recvbuf, <span class="kw">int</span> recvcount, MPI_Datatype recvtype,
+                                              MPI_Comm comm);   <span class="cm">// sin root</span>
+
+MPI_Reduce   (<span class="kw">const void</span>* sendbuf, <span class="kw">void</span>* recvbuf, <span class="kw">int</span> count,
+              MPI_Datatype dt, MPI_Op op,     <span class="kw">int</span> root, MPI_Comm comm);
+
+MPI_Allreduce(<span class="kw">const void</span>* sendbuf, <span class="kw">void</span>* recvbuf, <span class="kw">int</span> count,
+              MPI_Datatype dt, MPI_Op op,                  MPI_Comm comm);
+
+MPI_Barrier  (MPI_Comm comm);</code></pre>
+
+    <h4>Qué significa cada parámetro</h4>
+    <table class="var-table">
+      <tr><th>Parámetro</th><th>Significado</th></tr>
+      <tr><td>buffer (Bcast)</td><td>En el root, el dato que se envía. En los demás, el sitio donde se recibe la copia. Mismo puntero en todos.</td></tr>
+      <tr><td>sendbuf</td><td>Datos a enviar. En Scatter/Reduce solo importa en el root y en los procesos que aportan. En Gather, en todos.</td></tr>
+      <tr><td>recvbuf</td><td>Donde se reciben datos. En Scatter, en todos los procesos. En Gather/Reduce, solo importa en el root.</td></tr>
+      <tr><td>sendcount</td><td>Número de elementos que <em>cada</em> proceso envía (no el total).</td></tr>
+      <tr><td>recvcount</td><td>En Scatter/Gather: cuántos elementos recibe <em>cada</em> proceso. Suele ser igual a sendcount.</td></tr>
+      <tr><td>count (Reduce/Allreduce)</td><td>Número de elementos sobre los que se aplica la operación. Cada proceso aporta count elementos y el resultado tiene count elementos.</td></tr>
+      <tr><td>sendtype / recvtype</td><td>Tipos MPI de los elementos (MPI_INT, MPI_DOUBLE...).</td></tr>
+      <tr><td>op</td><td>Operación de reducción: ver tabla siguiente.</td></tr>
+      <tr><td>root</td><td>Rank del proceso "especial": el que envía (Bcast/Scatter) o el que recibe el resultado (Gather/Reduce). En Allgather y Allreduce <em>no existe</em>: el resultado va a todos.</td></tr>
+      <tr><td>comm</td><td>Comunicador. Normalmente <code>MPI_COMM_WORLD</code>.</td></tr>
+    </table>
+
+    <h4>Operaciones de reducción (parámetro <code>op</code>)</h4>
+    <table>
+      <tr><th>Constante</th><th>Operación</th></tr>
+      <tr><td>MPI_SUM</td><td>Suma</td></tr>
+      <tr><td>MPI_PROD</td><td>Producto</td></tr>
+      <tr><td>MPI_MAX / MPI_MIN</td><td>Máximo / mínimo</td></tr>
+      <tr><td>MPI_LAND / MPI_LOR</td><td>AND lógico / OR lógico</td></tr>
+      <tr><td>MPI_BAND / MPI_BOR</td><td>AND bit a bit / OR bit a bit</td></tr>
+      <tr><td>MPI_MAXLOC / MPI_MINLOC</td><td>Máximo/mínimo <em>y</em> rank del proceso que lo aportó</td></tr>
+    </table>
 
     <div class="analogy">
       <strong>Analogía de la clase.</strong> Bcast = el profesor dicta el enunciado a toda la clase. Scatter = el profesor reparte un problema distinto a cada grupo. Gather = cada grupo entrega su solución al profesor. Reduce = el profesor calcula la nota media de toda la clase. Allreduce = todos los alumnos se enteran de la nota media.
@@ -452,16 +531,65 @@ MPI_Recv(buffer, count, datatype, source, tag, comm, &amp;status);</code></pre>
 }</code></pre>
 
     <div class="step-box">
-      <h4>Diccionario de la receta</h4>
+      <h4>Diccionario de la receta: cada elemento explicado a fondo</h4>
+
+      <p><strong>Cualificadores de función</strong> (van delante del tipo de retorno):</p>
       <ul>
-        <li><code>__global__</code> → marca una función como <em>kernel</em>: la lanza el host, la ejecuta el device.</li>
-        <li><code>__device__</code> → función que solo se llama desde otra función del device.</li>
-        <li><code>__host__</code> → función normal de CPU (por defecto).</li>
-        <li><code>cudaMalloc(&amp;p, bytes)</code> → reserva memoria en la GPU. Equivalente a malloc pero en VRAM.</li>
-        <li><code>cudaMemcpy(dst, src, bytes, dir)</code> → copia entre host y device. La dirección: <code>cudaMemcpyHostToDevice</code> o <code>cudaMemcpyDeviceToHost</code>.</li>
-        <li><code>kernel&lt;&lt;&lt;bloques, hilos&gt;&gt;&gt;(args)</code> → lanza el kernel. Entre <code>&lt;&lt;&lt; &gt;&gt;&gt;</code> va la configuración del grid.</li>
-        <li><code>if (i &lt; N)</code> → protección imprescindible: si los bloques no cubren exactamente N, sobran hilos que <em>no deben</em> escribir fuera del array.</li>
+        <li><code>__global__ void f(...)</code> → declara un <em>kernel</em>. Se llama desde el host (CPU) con <code>&lt;&lt;&lt;...&gt;&gt;&gt;</code> y se ejecuta en el device (GPU). <em>Obligatorio</em> que devuelva <code>void</code>: para devolver resultados, escribe en un puntero que le pases.</li>
+        <li><code>__device__ T f(...)</code> → función auxiliar que <em>solo</em> se llama desde código del device (desde otro kernel u otra <code>__device__</code>). Puede devolver lo que sea.</li>
+        <li><code>__host__ T f(...)</code> → función normal de CPU. Es lo que tiene cualquier función C; se puede omitir.</li>
+        <li>Se pueden combinar: <code>__host__ __device__ T f(...)</code> → la función se compila <em>dos veces</em>, una para CPU y otra para GPU.</li>
       </ul>
+
+      <p><strong><code>cudaMalloc((void**)&amp;ptr, bytes)</code></strong></p>
+      <ul>
+        <li>Reserva memoria en la <em>memoria global</em> de la GPU. Equivalente al <code>malloc</code> de la CPU pero en VRAM.</li>
+        <li>Primer parámetro: <strong>dirección del puntero</strong> (puntero doble). Es decir, le pasamos <code>&amp;x_d</code> donde <code>x_d</code> es <code>float*</code>. ¿Por qué? Porque la función necesita <em>modificar</em> la variable <code>x_d</code> para que apunte a la memoria recién reservada. Como C pasa por valor, hay que pasar su dirección. El cast <code>(void**)</code> es para la firma genérica.</li>
+        <li>Segundo parámetro: número de bytes (típicamente <code>N * sizeof(float)</code>, no <code>N</code> a secas).</li>
+        <li>Devuelve <code>cudaError_t</code>: <code>cudaSuccess</code> si todo bien, otro código si falló (p. ej., GPU sin memoria).</li>
+      </ul>
+
+      <p><strong><code>cudaMemcpy(dst, src, bytes, direccion)</code></strong></p>
+      <ul>
+        <li><strong>OJO al orden:</strong> primero <em>destino</em>, después <em>origen</em>. Al revés que <code>strcpy</code> de la libc — fuente típica de bugs.</li>
+        <li><code>dst</code> = puntero de destino (donde se va a escribir).</li>
+        <li><code>src</code> = puntero de origen (de donde se lee).</li>
+        <li><code>bytes</code> = cuántos bytes copiar (de nuevo, suele ser <code>N * sizeof(tipo)</code>).</li>
+        <li><code>direccion</code> = uno de estos cuatro valores:
+          <ul>
+            <li><code>cudaMemcpyHostToDevice</code> → de RAM a VRAM (subir datos a la GPU).</li>
+            <li><code>cudaMemcpyDeviceToHost</code> → de VRAM a RAM (bajar resultados).</li>
+            <li><code>cudaMemcpyDeviceToDevice</code> → dentro de la GPU.</li>
+            <li><code>cudaMemcpyHostToHost</code> → dentro de la CPU (raro, equivalente a memcpy).</li>
+          </ul>
+        </li>
+        <li>Si te equivocas en la dirección (p. ej. dices HostToDevice cuando era al revés), CUDA puede no avisarte y obtienes basura.</li>
+      </ul>
+
+      <p><strong><code>cudaFree(ptr)</code></strong> → libera memoria reservada con <code>cudaMalloc</code>. Igual que <code>free</code> pero en device.</p>
+
+      <p><strong>Lanzamiento del kernel: <code>kernel&lt;&lt;&lt;gridDim, blockDim, sharedBytes, stream&gt;&gt;&gt;(args...)</code></strong></p>
+      <ul>
+        <li><code>gridDim</code> → número de <em>bloques</em> que forman el grid. Puede ser un <code>int</code> (grid 1D) o un <code>dim3</code> (grid 2D/3D).</li>
+        <li><code>blockDim</code> → número de <em>hilos</em> por bloque. Igual: <code>int</code> o <code>dim3</code>.</li>
+        <li><code>sharedBytes</code> (opcional, por defecto 0) → bytes de memoria <em>shared</em> que se reservan dinámicamente por bloque.</li>
+        <li><code>stream</code> (opcional, por defecto <code>0</code>) → stream CUDA, para solapar kernels.</li>
+        <li><code>args...</code> → los argumentos del kernel <em>como cualquier función C</em>. Los punteros tienen que ser de memoria <em>del device</em>, no del host (regla de oro).</li>
+      </ul>
+      <p>Ejemplo: <code>saxpy&lt;&lt;&lt;bloques, 256&gt;&gt;&gt;(N, 2.0f, x_d, y_d);</code></p>
+      <ul>
+        <li><code>bloques</code> bloques de 256 hilos cada uno → en total <code>bloques * 256</code> hilos en paralelo.</li>
+        <li>El cálculo <code>bloques = (N + 255) / 256</code> es el "techo de N/256": garantiza que cubrimos los N elementos incluso si N no es múltiplo de 256. Por eso necesitamos la guarda <code>if (i &lt; N)</code> dentro: los últimos hilos sobrantes <em>no deben</em> escribir.</li>
+      </ul>
+
+      <p><strong>Variables predefinidas dentro del kernel</strong> (las usa cada hilo para identificarse):</p>
+      <ul>
+        <li><code>threadIdx.x, .y, .z</code> → índice del hilo dentro del bloque (componentes 1D, 2D o 3D).</li>
+        <li><code>blockIdx.x, .y, .z</code> → índice del bloque dentro del grid.</li>
+        <li><code>blockDim.x, .y, .z</code> → tamaño del bloque (cuántos hilos tiene en cada dimensión).</li>
+        <li><code>gridDim.x, .y, .z</code> → tamaño del grid (cuántos bloques tiene en cada dimensión).</li>
+      </ul>
+      <p>En grids 1D solo se usa <code>.x</code>; los otros valen 1. Para una matriz suele usarse 2D: <code>i = blockIdx.y * blockDim.y + threadIdx.y; j = blockIdx.x * blockDim.x + threadIdx.x;</code></p>
     </div>
 
     <h3>5.4 · Jerarquía de memoria en CUDA</h3>
@@ -517,7 +645,8 @@ MPI_Recv(buffer, count, datatype, source, tag, comm, &amp;status);</code></pre>
     <ul>
       <li>"Calcula el speed-up dado T<sub>1</sub> = 100 s y T<sub>4</sub> = 30 s." → S = 100/30 ≈ 3,33.</li>
       <li>"¿Qué eficiencia tiene?" → E = 3,33/4 ≈ 0,83 (83 %).</li>
-      <li>"Si la parte serie es del 10 %, ¿speed-up máximo con 8 procesadores?" → 1 / (0,1 + 0,9/8) = 1 / (0,1 + 0,1125) = 4,7.</li>
+      <li>"Si la parte serie es del 10 %, ¿speed-up máximo con 8 procesadores?" → 1 / (0,1 + 0,9/8) = 1 / (0,1 + 0,1125) = 1 / 0,2125 ≈ 4,71.</li>
+      <li>"¿Y con infinitos procesadores?" → 1/s = 1/0,1 = 10. Es el techo asintótico de Amdahl.</li>
     </ul>
   </section>
 
@@ -562,7 +691,8 @@ MPI_Recv(buffer, count, datatype, source, tag, comm, &amp;status);</code></pre>
     <h3>Y el mismo problema con MPI</h3>
 <pre><code><span class="kw">int</span> rank, size, i;
 <span class="kw">double</span> paso = 1.0 / N;
-<span class="kw">double</span> suma_local = 0.0, pi = 0.0;
+<span class="kw">double</span> suma_local = 0.0;   <span class="cm">// suma parcial de cada proceso</span>
+<span class="kw">double</span> suma_global = 0.0;  <span class="cm">// solo se rellena en el rank 0</span>
 
 MPI_Init(&amp;argc, &amp;argv);
 MPI_Comm_rank(MPI_COMM_WORLD, &amp;rank);
@@ -574,18 +704,23 @@ MPI_Comm_size(MPI_COMM_WORLD, &amp;size);
     suma_local += 4.0 / (1.0 + x*x);
 }
 
-MPI_Reduce(&amp;suma_local, &amp;pi, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+MPI_Reduce(&amp;suma_local, &amp;suma_global, 1, MPI_DOUBLE,
+           MPI_SUM, 0, MPI_COMM_WORLD);
 
-<span class="kw">if</span> (rank == 0)
-    printf(<span class="st">"pi = %f\n"</span>, pi * paso);
+<span class="kw">if</span> (rank == 0) {
+    <span class="kw">double</span> pi = suma_global * paso;
+    printf(<span class="st">"pi = %f\n"</span>, pi);
+}
 
 MPI_Finalize();</code></pre>
 
     <ul>
-      <li>El bucle <code>for (i = rank; i &lt; N; i += size)</code> reparte iteraciones <em>cíclicamente</em>: proceso 0 hace 0, p, 2p,...; proceso 1 hace 1, 1+p, 1+2p,...</li>
-      <li><code>suma_local</code> es <em>local</em> a cada proceso, no compartida (en MPI no existe nada compartido).</li>
-      <li><code>MPI_Reduce</code> suma las parciales de todos y deja el resultado <em>solo en el rank 0</em>.</li>
-      <li>Por eso el <code>printf</code> está protegido con <code>if (rank == 0)</code>: si lo dejas sin proteger, lo imprime cada proceso.</li>
+      <li><strong>Reparto cíclico.</strong> El bucle <code>for (i = rank; i &lt; N; i += size)</code> arranca en <code>rank</code> y avanza de <code>size</code> en <code>size</code>. Si hay 4 procesos: el 0 hace iteraciones 0, 4, 8, 12...; el 1 hace 1, 5, 9, 13...; etc. Garantiza balance de carga sin necesidad de calcular rangos.</li>
+      <li><strong><code>suma_local</code> es local.</strong> En MPI no hay variables compartidas: cada proceso tiene su propia copia con su propio valor. No hace falta protección de sección crítica.</li>
+      <li><strong>Por qué <em>dos</em> variables</strong> (<code>suma_local</code> y <code>suma_global</code>): <code>MPI_Reduce</code> necesita un buffer de envío (lo que cada proceso aporta) y un buffer de recepción (donde el root deposita el resultado). No pueden ser el mismo puntero en el estándar; aunque MPI permite <code>MPI_IN_PLACE</code>, es más claro usar dos variables.</li>
+      <li><strong>Reparto de parámetros del Reduce</strong>: <code>&amp;suma_local</code> es el sendbuf, <code>&amp;suma_global</code> el recvbuf, <code>1</code> elementos, tipo <code>MPI_DOUBLE</code>, operación <code>MPI_SUM</code>, root <code>0</code>, comunicador <code>MPI_COMM_WORLD</code>.</li>
+      <li><strong>El resultado solo está en el root.</strong> En los demás procesos, <code>suma_global</code> sigue valiendo 0 después del Reduce. Por eso el <code>printf</code> está dentro de <code>if (rank == 0)</code>: si no, los demás imprimirían "pi = 0.000000".</li>
+      <li><strong>Si todos necesitaran el resultado</strong>, usaríamos <code>MPI_Allreduce</code> (mismos parámetros menos <code>root</code>) y todos imprimirían el mismo π.</li>
     </ul>
   </section>
 
@@ -599,10 +734,10 @@ MPI_Finalize();</code></pre>
       <li><strong>Colectiva llamada solo por algunos procesos</strong> (p. ej. Bcast dentro de un <code>if (rank == 0)</code>) → deadlock.</li>
       <li><strong>cudaMemcpy con la dirección equivocada</strong> (HostToDevice cuando era DeviceToHost) → datos basura.</li>
       <li><strong>Olvidar <code>if (i &lt; N)</code></strong> en el kernel CUDA → escritura fuera del array.</li>
-      <li><strong>Asumir orden de ejecución</strong> entre hilos OpenMP sin barrier → carrera.</li>
-      <li><strong>Confundir parallel sections con parallel for</strong>: sections es para bloques distintos, for para iteraciones del mismo bucle.</li>
-      <li><strong>MPI_Recv con source equivocado</strong>: si esperas de cualquier proceso, usa <code>MPI_ANY_SOURCE</code>.</li>
-      <li><strong>Calcular speed-up con T<sub>1</sub> = paralelo con 1 hilo</strong> en lugar del secuencial puro → speed-up inflado.</li>
+      <li><strong>Asumir orden de ejecución entre hilos OpenMP sin barrier</strong> → si el hilo 2 necesita el resultado del hilo 0, hace falta una barrera (o reorganizar el código); no se puede dar por hecho que vayan en orden de ID.</li>
+      <li><strong>Confundir parallel sections con parallel for</strong>: <code>sections</code> reparte <em>bloques de código distintos</em> entre hilos (paralelismo funcional); <code>for</code> reparte <em>iteraciones del mismo bucle</em>.</li>
+      <li><strong>MPI_Recv con source equivocado</strong>: si esperas un mensaje sin saber de qué proceso vendrá, usa <code>MPI_ANY_SOURCE</code> y luego mira <code>status.MPI_SOURCE</code> para saber quién fue.</li>
+      <li><strong>Calcular speed-up con T<sub>1</sub> = tu propio paralelo lanzado con 1 hilo</strong> en lugar del mejor secuencial conocido → T<sub>1</sub> arrastra overhead de OpenMP/MPI y el speed-up queda inflado artificialmente. La definición correcta usa el secuencial óptimo.</li>
     </ol>
   </section>
 
@@ -613,7 +748,7 @@ MPI_Finalize();</code></pre>
     <div class="step-box">
       <h4>El día del examen</h4>
       <ol>
-        <li><strong>Empieza por el test.</strong> Las que tengas claras, hechas. Las dudosas, marcalas con un símbolo y vuelve. Las que no tengas ni idea, déjalas en blanco (la penalización es de 1/3).</li>
+        <li><strong>Empieza por el test.</strong> Las que tengas claras, hechas. Las dudosas, márcalas con un símbolo y vuelve. Las que no tengas ni idea, déjalas en blanco (la penalización es de 1/3).</li>
         <li><strong>Cortas en segundo lugar.</strong> Una definición + un porqué + un ejemplo. Tres líneas por pregunta es suficiente.</li>
         <li><strong>Ejercicios al final.</strong> Lee dos veces, identifica esquema, escribe estructura básica (no código completo si no te sale), añade comentarios justificando decisiones. Puntos parciales valen mucho.</li>
       </ol>

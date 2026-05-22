@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Esquemas algorítmicos en práctica — MPP</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .problem-box { background:#eef4fb; border-left:4px solid #1f6fb2; padding:14px 18px; margin:18px 0 12px; border-radius:4px; }
+  .problem-box strong { color:#0b4a7a; }
+  .why-box { background:#f5efe2; border-left:4px solid #b08800; padding:12px 16px; margin:14px 0; border-radius:4px; }
+  .why-box strong { color:#7a5d00; }
+  .code-walk { background:#fafafa; border:1px solid #ddd; border-radius:6px; padding:8px 16px; margin:12px 0; }
+  .code-walk li { margin:6px 0; }
+  .scheme-header { background:linear-gradient(90deg,#0b4a7a 0%, #1f6fb2 100%); color:#fff; padding:18px 22px; border-radius:6px; margin:30px 0 18px; }
+  .scheme-header h2 { color:#fff; margin:0; border:0; }
+  .scheme-header p { color:#dde7f1; margin:6px 0 0; }
+  .var-table td:first-child { font-family: 'Consolas', monospace; white-space:nowrap; color:#0a5a8f; font-weight:600; }
+  .mini-toc { background:#eef4ee; border-radius:6px; padding:14px 20px; margin:20px 0; }
+  .mini-toc ol { margin:0; padding-left:22px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="session-header">
+    <div class="session-meta">
+      <span class="session-number">ESQUEMAS · EN PRÁCTICA</span>
+      <a href="index.html">← índice del curso</a>
+    </div>
+    <h1 class="session-title">Esquemas algorítmicos<br>en práctica</h1>
+    <p class="session-subtitle">Cada esquema del bloque IV resuelto sobre un problema típico, con el código completo y la explicación de <em>cada línea</em>, <em>cada función</em> y <em>cada argumento</em>. Pensado para que veas cómo se traduce un enunciado en un programa, no solo la teoría.</p>
+  </header>
+
+  <div class="mini-toc">
+    <strong>Esquemas tratados (en este orden):</strong>
+    <ol>
+      <li>Paralelismo de datos — suma de vectores (OpenMP + MPI)</li>
+      <li>Síncrono iterativo — ecuación del calor / Jacobi (MPI con halos)</li>
+      <li>Relajado — Gauss-Seidel asíncrono</li>
+      <li>Grafo de dependencias — reducción en árbol</li>
+      <li>Pipeline — procesado de imágenes en 3 etapas (MPI)</li>
+      <li>Divide y vencerás — mergesort paralelo (OpenMP tasks)</li>
+      <li>Programación dinámica — Floyd-Warshall (OpenMP)</li>
+      <li>Trabajadores replicados — bolsa de tareas (MPI maestro-trabajador)</li>
+      <li>Branch &amp; bound — mochila 0/1 (esquema)</li>
+    </ol>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 1. PARALELISMO DE DATOS                                    -->
+  <!-- ========================================================= -->
+  <div class="scheme-header">
+    <h2>1 · Paralelismo de datos</h2>
+    <p>La misma operación sobre cada elemento. Es el esquema más simple y el más usado.</p>
+  </div>
+
+  <div class="problem-box">
+    <strong>Problema.</strong> Calcula <code>C[i] = A[i] + B[i]</code> para <em>i = 0..N−1</em>, con <em>N</em> grande (millones).
+  </div>
+
+  <h3>1.a — Solución con OpenMP</h3>
+<pre><code><span class="pp">#include &lt;stdio.h&gt;</span>
+<span class="pp">#include &lt;stdlib.h&gt;</span>
+<span class="pp">#include &lt;omp.h&gt;</span>
+
+<span class="kw">int</span> main() {
+    <span class="kw">int</span>    N = 1000000;
+    <span class="kw">double</span> *A = malloc(N * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+    <span class="kw">double</span> *B = malloc(N * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+    <span class="kw">double</span> *C = malloc(N * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+
+    <span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; N; i++) { A[i] = i; B[i] = 2*i; }
+
+    <span class="pp">#pragma omp parallel for schedule(static)</span>
+    <span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; N; i++) {
+        C[i] = A[i] + B[i];
+    }
+
+    printf(<span class="st">"C[1000] = %f\n"</span>, C[1000]);
+    free(A); free(B); free(C);
+}</code></pre>
+
+  <div class="code-walk">
+    <strong>Lectura línea por línea</strong>
+    <ul>
+      <li><code>malloc(N * sizeof(double))</code> → reserva memoria para N doubles. <code>sizeof(double)</code> son 8 bytes; total 8·N bytes. Devuelve un puntero.</li>
+      <li><code>#pragma omp parallel for</code> → fusiona dos directivas: <code>parallel</code> (abre la región con varios hilos) + <code>for</code> (reparte las iteraciones del bucle siguiente). Es la forma más común y compacta.</li>
+      <li><code>schedule(static)</code> → reparto en bloques contiguos: si hay 4 hilos y N=1M, hilo 0 hace [0..249.999], hilo 1 [250.000..499.999], etc. Static es óptimo cuando cada iteración tarda igual (aquí, todas son una suma).</li>
+      <li>La variable <code>i</code> del bucle es <em>automáticamente private</em> por OpenMP en una directiva <code>for</code>. No hay que declararlo.</li>
+      <li>Las variables <code>A</code>, <code>B</code>, <code>C</code>, <code>N</code> son <em>shared por defecto</em>. ¿Por qué es seguro? Porque cada hilo escribe en posiciones distintas de <code>C</code> (su rango de <code>i</code>) y solo lee de <code>A</code> y <code>B</code>. No hay carrera.</li>
+    </ul>
+  </div>
+
+  <div class="why-box">
+    <strong>¿Por qué funciona?</strong> No hay <em>dependencia entre iteraciones</em>: el cálculo de <code>C[5]</code> no necesita <code>C[4]</code>. Esa es la condición para usar paralelismo de datos puro.
+  </div>
+
+  <h3>1.b — Misma solución con MPI</h3>
+<pre><code><span class="pp">#include &lt;mpi.h&gt;</span>
+
+<span class="kw">int</span> main(<span class="kw">int</span> argc, <span class="kw">char</span> **argv) {
+    <span class="kw">int</span> rank, size;
+    <span class="kw">int</span> N = 1000000;
+
+    MPI_Init(&amp;argc, &amp;argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &amp;rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &amp;size);
+
+    <span class="kw">int</span> local_n = N / size;                 <span class="cm">// asumimos N divisible por size</span>
+    <span class="kw">double</span> *A_local = malloc(local_n * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+    <span class="kw">double</span> *B_local = malloc(local_n * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+    <span class="kw">double</span> *C_local = malloc(local_n * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+    <span class="kw">double</span> *A = NULL, *B = NULL, *C = NULL;
+
+    <span class="kw">if</span> (rank == 0) {
+        A = malloc(N * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+        B = malloc(N * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+        C = malloc(N * <span class="kw">sizeof</span>(<span class="kw">double</span>));
+        <span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; N; i++) { A[i] = i; B[i] = 2*i; }
+    }
+
+    MPI_Scatter(A, local_n, MPI_DOUBLE,
+                A_local, local_n, MPI_DOUBLE,
+                0, MPI_COMM_WORLD);
+    MPI_Scatter(B, local_n, MPI_DOUBLE,
+                B_local, local_n, MPI_DOUBLE,
+                0, MPI_COMM_WORLD);
+
+    <span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; local_n; i++)
+        C_local[i] = A_local[i] + B_local[i];
+
+    MPI_Gather(C_local, local_n, MPI_DOUBLE,
+               C,       local_n, MPI_DOUBLE,
+               0, MPI_COMM_WORLD);
+
+    <span class="kw">if</span> (rank == 0) printf(<span class="st">"C[1000] = %f\n"</span>, C[1000]);
+
+    MPI_Finalize();
+}</code></pre>
+
+  <div class="code-walk">
+    <strong>Funciones nuevas, parámetro a parámetro</strong>
+    <ul>
+      <li><code>MPI_Scatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm)</code>:
+        <ul>
+          <li><code>sendbuf</code> = puntero al array completo (solo importa en el root); <code>NULL</code> en los demás.</li>
+          <li><code>sendcount</code> = cuántos elementos manda a <em>cada</em> proceso (no el total).</li>
+          <li><code>sendtype</code> = tipo MPI de cada elemento (<code>MPI_DOUBLE</code>).</li>
+          <li><code>recvbuf</code> = dónde guarda cada proceso (incluido el root) su trozo.</li>
+          <li><code>recvcount</code>, <code>recvtype</code> = simétricos al send.</li>
+          <li><code>root</code> = quién es el que reparte (aquí 0).</li>
+          <li><code>comm</code> = comunicador.</li>
+        </ul>
+      </li>
+      <li><code>MPI_Gather</code> = exacta inversa de Scatter. El root junta los trozos.</li>
+    </ul>
+  </div>
+
+  <div class="why-box">
+    <strong>Comparación clave OpenMP vs MPI.</strong> En OpenMP no hay reparto explícito de datos: la memoria es compartida. En MPI hay que mover los datos (<em>Scatter/Gather</em>) porque cada proceso solo ve su trozo. Más código, pero escala a clusters.
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 2. SÍNCRONO ITERATIVO (Jacobi / calor)                     -->
+  <!-- ========================================================= -->
+  <div class="scheme-header">
+    <h2>2 · Síncrono iterativo (Jacobi / ecuación del calor)</h2>
+    <p>Iteramos un patrón estable; cada paso depende del anterior. Barrera entre pasos.</p>
+  </div>
+
+  <div class="problem-box">
+    <strong>Problema.</strong> Distribución de temperatura en una barra de N puntos. En cada paso, la nueva temperatura de cada punto interior es la media de sus dos vecinos: <code>U_new[i] = (U_old[i-1] + U_old[i+1]) / 2</code>. Repetir hasta convergencia.
+  </div>
+
+  <h3>2.a — Versión OpenMP</h3>
+<pre><code><span class="kw">double</span> U_old[N], U_new[N];
+
+<span class="cm">// Inicialización: extremos fijos a T calientes/frías</span>
+U_old[0] = 100.0; U_old[N-1] = 0.0;
+
+<span class="kw">for</span> (<span class="kw">int</span> paso = 0; paso &lt; PASOS; paso++) {
+
+    <span class="pp">#pragma omp parallel for</span>
+    <span class="kw">for</span> (<span class="kw">int</span> i = 1; i &lt; N-1; i++)
+        U_new[i] = 0.5 * (U_old[i-1] + U_old[i+1]);
+
+    <span class="cm">// barrera implícita al final del parallel for</span>
+
+    <span class="pp">#pragma omp parallel for</span>
+    <span class="kw">for</span> (<span class="kw">int</span> i = 1; i &lt; N-1; i++)
+        U_old[i] = U_new[i];
+}</code></pre>
+
+  <div class="code-walk">
+    <strong>Por qué dos bucles y por qué dos arrays</strong>
+    <ul>
+      <li><strong>Doble buffer</strong>: usamos <code>U_old</code> para leer y <code>U_new</code> para escribir. Si usásemos un solo array, al actualizar <code>U[5]</code> ya no tendríamos el valor antiguo para calcular <code>U[6]</code>.</li>
+      <li>El primer <code>parallel for</code> calcula todos los <code>U_new</code> en paralelo. La <strong>barrera implícita</strong> al cerrar la región paralela garantiza que <em>todos</em> los <code>U_new</code> están listos antes de copiar.</li>
+      <li>El segundo <code>parallel for</code> copia <code>U_new</code> a <code>U_old</code> para la siguiente iteración. (En la práctica se intercambian los punteros, no se copia, pero conceptualmente es esto.)</li>
+      <li>Si los hilos no se sincronizaran entre bucles, unos seguirían calculando con valores del paso anterior y otros con valores nuevos: caos.</li>
+    </ul>
+  </div>
+
+  <h3>2.b — Versión MPI con halos (la versión que cae en examen)</h3>
+<pre><code><span class="kw">int</span> rank, size;
+MPI_Init(&amp;argc, &amp;argv);
+MPI_Comm_rank(MPI_COMM_WORLD, &amp;rank);
+MPI_Comm_size(MPI_COMM_WORLD, &amp;size);
+
+<span class="kw">int</span> local_n = N / size;
+<span class="cm">// Reservamos local_n + 2: una celda fantasma a cada lado (halo)</span>
+<span class="kw">double</span> U_old[local_n + 2], U_new[local_n + 2];
+
+<span class="kw">for</span> (<span class="kw">int</span> paso = 0; paso &lt; PASOS; paso++) {
+
+    <span class="cm">// 1. Intercambio de fronteras con vecinos</span>
+    <span class="kw">int</span> izq = rank - 1;
+    <span class="kw">int</span> der = rank + 1;
+    <span class="kw">if</span> (izq &lt; 0)      izq = MPI_PROC_NULL;
+    <span class="kw">if</span> (der &gt;= size)  der = MPI_PROC_NULL;
+
+    MPI_Sendrecv(&amp;U_old[1],         1, MPI_DOUBLE, izq, 0,
+                 &amp;U_old[local_n+1], 1, MPI_DOUBLE, der, 0,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    MPI_Sendrecv(&amp;U_old[local_n],   1, MPI_DOUBLE, der, 1,
+                 &amp;U_old[0],         1, MPI_DOUBLE, izq, 1,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    <span class="cm">// 2. Actualización local</span>
+    <span class="kw">for</span> (<span class="kw">int</span> i = 1; i &lt;= local_n; i++)
+        U_new[i] = 0.5 * (U_old[i-1] + U_old[i+1]);
+
+    <span class="cm">// 3. Copia para siguiente iteración</span>
+    <span class="kw">for</span> (<span class="kw">int</span> i = 1; i &lt;= local_n; i++)
+        U_old[i] = U_new[i];
+}</code></pre>
+
+  <div class="code-walk">
+    <strong>Conceptos nuevos: halo y MPI_Sendrecv</strong>
+    <ul>
+      <li><strong>Halo (celdas fantasma)</strong>: el proceso 1 necesita el último valor del proceso 0 (su vecino izquierdo) y el primero del proceso 2 (su vecino derecho). Reservamos 2 celdas extra (índices 0 y <code>local_n+1</code>) para guardarlos. El cómputo se hace de <code>i=1</code> a <code>i=local_n</code>; los halos se rellenan por comunicación.</li>
+      <li><code>MPI_Sendrecv(sendbuf, sc, st, dest, stag, recvbuf, rc, rt, source, rtag, comm, status)</code> → envía y recibe en una sola llamada, evitando deadlocks. Parámetros:
+        <ul>
+          <li><code>sendbuf</code>, <code>sc</code>, <code>st</code>, <code>dest</code>, <code>stag</code> = qué/cuánto/tipo/a quién/etiqueta de envío.</li>
+          <li><code>recvbuf</code>, <code>rc</code>, <code>rt</code>, <code>source</code>, <code>rtag</code> = mismo para recepción.</li>
+          <li>El sistema garantiza que no se bloquea aunque todos los procesos lo hagan a la vez.</li>
+        </ul>
+      </li>
+      <li><code>MPI_PROC_NULL</code> → "vecino nulo": comunicación que no hace nada, no produce error. Útil para los extremos (rank 0 no tiene vecino izquierdo).</li>
+      <li><code>MPI_STATUS_IGNORE</code> → no nos interesa la información del status (de quién y qué tag llegó); ahorramos memoria.</li>
+    </ul>
+  </div>
+
+  <div class="why-box">
+    <strong>¿Por qué dos Sendrecv y no uno?</strong> El primero intercambia el extremo izquierdo del rango (manda al vecino izquierdo, recibe del derecho). El segundo, simétrico. Si lo hicieras con dos <code>MPI_Send</code> seguidos sin recv en medio, se bloquearía con mensajes grandes.
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 3. RELAJADO                                                -->
+  <!-- ========================================================= -->
+  <div class="scheme-header">
+    <h2>3 · Paralelismo relajado (asíncrono)</h2>
+    <p>Como el síncrono, pero sin barreras. Cada proceso usa los datos más recientes que tenga.</p>
+  </div>
+
+  <div class="problem-box">
+    <strong>Problema.</strong> Igual que Jacobi, pero usando <em>Gauss-Seidel</em>: cuando actualizas <code>U[i]</code>, ya usas el <code>U[i-1]</code> recién calculado en esta misma iteración. Converge más rápido cuando el algoritmo lo permite.
+  </div>
+
+<pre><code><span class="cm">// Versión OpenMP relajada: un solo array, sin barrera</span>
+<span class="kw">double</span> U[N];
+
+<span class="kw">for</span> (<span class="kw">int</span> paso = 0; paso &lt; PASOS; paso++) {
+    <span class="pp">#pragma omp parallel for schedule(static)</span>
+    <span class="kw">for</span> (<span class="kw">int</span> i = 1; i &lt; N-1; i++) {
+        U[i] = 0.5 * (U[i-1] + U[i+1]);
+    }
+}</code></pre>
+
+  <div class="code-walk">
+    <strong>Qué cambia respecto al síncrono</strong>
+    <ul>
+      <li><strong>Un solo array</strong>: no hay <code>U_old</code> ni <code>U_new</code>. Cuando un hilo lee <code>U[i-1]</code>, puede que ya esté actualizado por otro hilo (valor nuevo) o no (valor antiguo). <em>Aceptamos la incertidumbre.</em></li>
+      <li><strong>No hay barrera interna</strong>. La directiva <code>parallel for</code> sigue teniendo una barrera al final, pero dentro del bucle los hilos no se sincronizan: el que va más rápido lee lo que haya en ese momento.</li>
+      <li><strong>Resultado no determinista</strong>: dos ejecuciones pueden converger por caminos distintos al mismo valor final. <em>Aceptable</em> en métodos numéricos con garantías de convergencia.</li>
+    </ul>
+  </div>
+
+  <div class="why-box">
+    <strong>¿Cuándo se permite?</strong> Solo cuando el algoritmo converge igual al usar valores ligeramente desactualizados. Métodos iterativos de Gauss-Seidel, optimización por gradiente paralelo, simulated annealing. <em>No</em> es válido en problemas que dependen del orden estricto.
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 4. GRAFO DE DEPENDENCIAS (reducción en árbol)              -->
+  <!-- ========================================================= -->
+  <div class="scheme-header">
+    <h2>4 · Grafo de dependencias (reducción en árbol)</h2>
+    <p>Tareas con dependencias arbitrarias formando un DAG. Ejemplo canónico: la reducción en árbol.</p>
+  </div>
+
+  <div class="problem-box">
+    <strong>Problema.</strong> Sumar N números en log<sub>2</sub>(N) pasos en lugar de N. En el primer paso, los pares de números se suman. En el segundo paso, los pares de sumas parciales. Y así sucesivamente.
+  </div>
+
+<pre><code><span class="cm">// Reducción en árbol con MPI: cada paso involucra la mitad de procesos</span>
+<span class="kw">int</span> rank, size;
+<span class="kw">double</span> mi_valor = ...;   <span class="cm">// cada proceso tiene un valor inicial</span>
+
+<span class="kw">for</span> (<span class="kw">int</span> paso = 1; paso &lt; size; paso *= 2) {
+    <span class="kw">if</span> ((rank % (2*paso)) == 0) {
+        <span class="cm">// Soy "receptor" en este paso</span>
+        <span class="kw">if</span> (rank + paso &lt; size) {
+            <span class="kw">double</span> recibido;
+            MPI_Recv(&amp;recibido, 1, MPI_DOUBLE, rank + paso, 0,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            mi_valor += recibido;
+        }
+    } <span class="kw">else</span> <span class="kw">if</span> ((rank % paso) == 0) {
+        <span class="cm">// Soy "emisor" en este paso</span>
+        MPI_Send(&amp;mi_valor, 1, MPI_DOUBLE, rank - paso, 0, MPI_COMM_WORLD);
+        <span class="kw">break</span>;
+    }
+}
+
+<span class="kw">if</span> (rank == 0)
+    printf(<span class="st">"Suma total: %f\n"</span>, mi_valor);</code></pre>
+
+  <div class="code-walk">
+    <strong>Cómo razonar este código (con 8 procesos)</strong>
+    <ul>
+      <li><strong>Paso 1</strong> (paso=1): pares emiten a su vecino par. (0&larr;1, 2&larr;3, 4&larr;5, 6&larr;7). Quedan vivos los procesos 0, 2, 4, 6.</li>
+      <li><strong>Paso 2</strong> (paso=2): el 2 manda al 0, el 6 al 4. Quedan vivos 0 y 4.</li>
+      <li><strong>Paso 3</strong> (paso=4): el 4 manda al 0. Queda solo el 0 con la suma total.</li>
+      <li><code>rank % (2*paso) == 0</code> identifica al receptor: los ranks múltiplos de 2, 4, 8...</li>
+      <li><code>rank + paso &lt; size</code> es la protección por si N no es potencia de 2 (no hay vecino que mande).</li>
+      <li><code>break</code> en el emisor → ya entregó su suma, no participa en siguientes pasos.</li>
+    </ul>
+  </div>
+
+  <div class="why-box">
+    <strong>Conclusión.</strong> En lugar de N−1 sumas en serie, hacemos log₂(N) <em>pasos</em>, cada uno con varias sumas en paralelo. Es el algoritmo que hay <em>dentro</em> de <code>MPI_Reduce</code>.
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 5. PIPELINE                                                -->
+  <!-- ========================================================= -->
+  <div class="scheme-header">
+    <h2>5 · Pipeline (segmentación)</h2>
+    <p>Flujo de datos que pasa por etapas en cascada. Cada etapa procesa y pasa al siguiente.</p>
+  </div>
+
+  <div class="problem-box">
+    <strong>Problema.</strong> Procesar un flujo de imágenes en 3 etapas: (1) leer, (2) aplicar filtro de bordes, (3) escribir comprimida. Cada etapa la ejecuta un proceso MPI distinto.
+  </div>
+
+<pre><code><span class="kw">int</span> rank, size;
+MPI_Init(&amp;argc, &amp;argv);
+MPI_Comm_rank(MPI_COMM_WORLD, &amp;rank);
+MPI_Comm_size(MPI_COMM_WORLD, &amp;size);    <span class="cm">// asumimos size == 3</span>
+
+<span class="kw">int</span> NUM_IMAGENES = 100;
+<span class="kw">double</span> buf[TAM_IMAGEN];
+
+<span class="kw">if</span> (rank == 0) {
+    <span class="cm">// ===== Etapa 1: lectura =====</span>
+    <span class="kw">for</span> (<span class="kw">int</span> k = 0; k &lt; NUM_IMAGENES; k++) {
+        leer_imagen(k, buf);
+        MPI_Send(buf, TAM_IMAGEN, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD);
+    }
+}
+<span class="kw">else if</span> (rank == 1) {
+    <span class="cm">// ===== Etapa 2: filtro =====</span>
+    <span class="kw">for</span> (<span class="kw">int</span> k = 0; k &lt; NUM_IMAGENES; k++) {
+        MPI_Recv(buf, TAM_IMAGEN, MPI_DOUBLE, 0, 0,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        filtro_bordes(buf);
+        MPI_Send(buf, TAM_IMAGEN, MPI_DOUBLE, 2, 0, MPI_COMM_WORLD);
+    }
+}
+<span class="kw">else if</span> (rank == 2) {
+    <span class="cm">// ===== Etapa 3: escritura =====</span>
+    <span class="kw">for</span> (<span class="kw">int</span> k = 0; k &lt; NUM_IMAGENES; k++) {
+        MPI_Recv(buf, TAM_IMAGEN, MPI_DOUBLE, 1, 0,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        escribir_imagen(k, buf);
+    }
+}
+
+MPI_Finalize();</code></pre>
+
+  <div class="code-walk">
+    <strong>Cómo se comporta el pipeline en el tiempo</strong>
+    <ul>
+      <li><strong>Llenado</strong>: en t=1 solo trabaja la etapa 1 (lee imagen 0). En t=2, etapa 1 lee la 1 y etapa 2 filtra la 0. En t=3, etapa 1 lee la 2, etapa 2 filtra la 1, etapa 3 escribe la 0. Las 3 etapas ya trabajan en paralelo.</li>
+      <li><strong>Régimen permanente</strong>: las 3 etapas procesan a la vez 3 imágenes distintas del flujo. Throughput = 1 / (etapa más lenta).</li>
+      <li><strong>Vaciado</strong>: al final, etapa 1 termina, luego etapa 2, luego etapa 3.</li>
+      <li>Cada proceso solo conoce a su vecino izquierdo y derecho en la cadena, no a los demás.</li>
+      <li>El tag <code>0</code> es irrelevante aquí (solo un tipo de mensaje); en pipelines complejos se usa para distinguir paquetes de control de paquetes de datos.</li>
+    </ul>
+  </div>
+
+  <div class="why-box">
+    <strong>Cuello de botella.</strong> Si la etapa 2 tarda el doble que las otras, el pipeline al completo va al ritmo de la 2. Soluciones: replicar la etapa lenta (dos procesos haciendo filtro alternativamente) o reorganizar trabajo entre etapas.
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 6. DIVIDE Y VENCERÁS                                       -->
+  <!-- ========================================================= -->
+  <div class="scheme-header">
+    <h2>6 · Divide y vencerás (mergesort paralelo)</h2>
+    <p>Recursivo: divide, resuelve las partes en paralelo, combina. Tareas OpenMP.</p>
+  </div>
+
+  <div class="problem-box">
+    <strong>Problema.</strong> Ordenar un array de N elementos. Mergesort: divides en dos mitades, ordenas cada una recursivamente, mezclas.
+  </div>
+
+<pre><code><span class="pp">#define UMBRAL 10000</span>
+
+<span class="kw">void</span> mergesort(<span class="kw">int</span> *v, <span class="kw">int</span> ini, <span class="kw">int</span> fin) {
+    <span class="kw">if</span> (fin - ini &lt;= 1) <span class="kw">return</span>;
+
+    <span class="kw">int</span> mid = (ini + fin) / 2;
+
+    <span class="kw">if</span> (fin - ini &gt; UMBRAL) {
+        <span class="pp">#pragma omp task shared(v)</span>
+        mergesort(v, ini, mid);
+        <span class="pp">#pragma omp task shared(v)</span>
+        mergesort(v, mid, fin);
+        <span class="pp">#pragma omp taskwait</span>
+    } <span class="kw">else</span> {
+        <span class="cm">// Subproblema pequeño: resolver secuencial, no merece crear tareas</span>
+        mergesort(v, ini, mid);
+        mergesort(v, mid, fin);
+    }
+
+    merge(v, ini, mid, fin);
+}
+
+<span class="kw">int</span> main() {
+    <span class="kw">int</span> v[N];
+    <span class="cm">// ...llenar v...</span>
+
+    <span class="pp">#pragma omp parallel</span>
+    {
+        <span class="pp">#pragma omp single</span>
+        mergesort(v, 0, N);
+    }
+}</code></pre>
+
+  <div class="code-walk">
+    <strong>Por qué la estructura es esta</strong>
+    <ul>
+      <li><strong><code>#pragma omp parallel</code> + <code>single</code> al inicio</strong>: la región paralela crea el pool de hilos, pero solo uno (cualquiera) llama a <code>mergesort</code>. Los demás esperan, listos para coger tareas que se creen dentro.</li>
+      <li><code>#pragma omp task</code> → encola una tarea (la llamada recursiva). Cualquier hilo del pool la cogerá.</li>
+      <li><code>shared(v)</code> → el array es compartido por todas las tareas. Cada tarea trabaja sobre un rango distinto de índices, así que no hay carrera.</li>
+      <li><code>#pragma omp taskwait</code> → espera a que terminen las dos tareas hijas antes de llamar a <code>merge</code> (que necesita las dos mitades ordenadas).</li>
+      <li><strong>UMBRAL</strong> de granularidad: si el subproblema es pequeño (&lt; 10.000 elementos), no creamos tarea — el coste de planificación supera al de ordenar directamente.</li>
+    </ul>
+  </div>
+
+  <div class="why-box">
+    <strong>Sin umbral, ¿qué pasa?</strong> Crearíamos miles de tareas de 1 elemento. El coste de crear y planificar tareas dominaría el tiempo. Con umbral, las hojas del árbol de recursión se resuelven secuencial y las ramas grandes en paralelo. Es la clave para que D&amp;V paralelo gane.
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 7. PROGRAMACIÓN DINÁMICA (Floyd-Warshall)                  -->
+  <!-- ========================================================= -->
+  <div class="scheme-header">
+    <h2>7 · Programación dinámica (Floyd-Warshall)</h2>
+    <p>Tabla con dependencias entre celdas. Paralelizamos las celdas independientes en cada frente.</p>
+  </div>
+
+  <div class="problem-box">
+    <strong>Problema.</strong> Caminos mínimos entre todos los pares de nodos de un grafo de N vértices. Algoritmo: para cada vértice <em>k</em>, actualizar <code>d[i][j] = min(d[i][j], d[i][k] + d[k][j])</code> para todo <em>i,j</em>.
+  </div>
+
+<pre><code><span class="kw">double</span> d[N][N];   <span class="cm">// matriz de distancias, inicializada con el grafo</span>
+
+<span class="kw">for</span> (<span class="kw">int</span> k = 0; k &lt; N; k++) {
+    <span class="pp">#pragma omp parallel for collapse(2)</span>
+    <span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; N; i++) {
+        <span class="kw">for</span> (<span class="kw">int</span> j = 0; j &lt; N; j++) {
+            <span class="kw">double</span> via_k = d[i][k] + d[k][j];
+            <span class="kw">if</span> (via_k &lt; d[i][j])
+                d[i][j] = via_k;
+        }
+    }
+}</code></pre>
+
+  <div class="code-walk">
+    <strong>Qué se puede paralelizar y qué no</strong>
+    <ul>
+      <li>El bucle externo en <code>k</code> es <strong>secuencial</strong>: cada iteración usa la matriz actualizada por la anterior. Si paralelizásemos <code>k</code>, romperíamos las dependencias.</li>
+      <li>Los bucles internos en <code>i</code> y <code>j</code> son <strong>paralelos</strong>: dentro de un mismo <code>k</code>, las celdas <code>d[i][j]</code> se calculan independientemente. La columna <code>k</code> y la fila <code>k</code> se leen pero no se modifican en este paso (propiedad de Floyd-Warshall).</li>
+      <li><code>collapse(2)</code> → "trata los dos bucles anidados como uno solo de N·N iteraciones para repartir". Da mejor balance que paralelizar solo el externo.</li>
+      <li><code>via_k</code> es local a cada iteración → privada por scope, no hay carrera.</li>
+    </ul>
+  </div>
+
+  <div class="why-box">
+    <strong>Frente de onda.</strong> En general, en PD identificamos las celdas que dependen <em>solo de celdas ya calculadas</em>. Esas celdas son el frente de onda y se pueden procesar en paralelo. El bucle que avanza de un frente al siguiente debe quedarse secuencial.
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 8. TRABAJADORES REPLICADOS                                 -->
+  <!-- ========================================================= -->
+  <div class="scheme-header">
+    <h2>8 · Trabajadores replicados (bolsa de tareas)</h2>
+    <p>Maestro reparte tareas bajo demanda. Útil cuando las tareas tardan muy distinto.</p>
+  </div>
+
+  <div class="problem-box">
+    <strong>Problema.</strong> Calcular el conjunto de Mandelbrot: para cada píxel (x,y), iterar una fórmula hasta divergir. Algunos píxeles convergen rápido, otros tardan miles de iteraciones. <strong>Carga muy desbalanceada.</strong>
+  </div>
+
+<pre><code><span class="kw">int</span> rank, size;
+MPI_Init(&amp;argc, &amp;argv);
+MPI_Comm_rank(MPI_COMM_WORLD, &amp;rank);
+MPI_Comm_size(MPI_COMM_WORLD, &amp;size);
+
+<span class="kw">int</span> NUM_TAREAS = 1000;
+<span class="kw">int</span> TAG_TAREA = 1, TAG_RESULTADO = 2, TAG_FIN = 3;
+
+<span class="kw">if</span> (rank == 0) {
+    <span class="cm">// ============ MAESTRO ============</span>
+    <span class="kw">int</span> siguiente = 0;
+    <span class="kw">int</span> entregadas = 0;
+
+    <span class="cm">// 1. Entregar una tarea inicial a cada trabajador</span>
+    <span class="kw">for</span> (<span class="kw">int</span> w = 1; w &lt; size; w++) {
+        MPI_Send(&amp;siguiente, 1, MPI_INT, w, TAG_TAREA, MPI_COMM_WORLD);
+        siguiente++;
+    }
+
+    <span class="cm">// 2. Cuando uno entrega resultado, le doy otra tarea</span>
+    <span class="kw">while</span> (entregadas &lt; NUM_TAREAS) {
+        <span class="kw">int</span> resultado;
+        MPI_Status st;
+        MPI_Recv(&amp;resultado, 1, MPI_INT, MPI_ANY_SOURCE,
+                 TAG_RESULTADO, MPI_COMM_WORLD, &amp;st);
+        entregadas++;
+        <span class="kw">int</span> worker = st.MPI_SOURCE;
+
+        <span class="kw">if</span> (siguiente &lt; NUM_TAREAS) {
+            MPI_Send(&amp;siguiente, 1, MPI_INT, worker, TAG_TAREA, MPI_COMM_WORLD);
+            siguiente++;
+        } <span class="kw">else</span> {
+            <span class="cm">// Ya no hay tareas: aviso de fin a ese trabajador</span>
+            MPI_Send(NULL, 0, MPI_INT, worker, TAG_FIN, MPI_COMM_WORLD);
+        }
+    }
+} <span class="kw">else</span> {
+    <span class="cm">// ============ TRABAJADOR ============</span>
+    <span class="kw">while</span> (1) {
+        <span class="kw">int</span> tarea;
+        MPI_Status st;
+        MPI_Recv(&amp;tarea, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &amp;st);
+
+        <span class="kw">if</span> (st.MPI_TAG == TAG_FIN) <span class="kw">break</span>;
+
+        <span class="kw">int</span> resultado = calcular_mandelbrot_linea(tarea);
+        MPI_Send(&amp;resultado, 1, MPI_INT, 0, TAG_RESULTADO, MPI_COMM_WORLD);
+    }
+}
+
+MPI_Finalize();</code></pre>
+
+  <div class="code-walk">
+    <strong>El patrón maestro-trabajador, paso a paso</strong>
+    <ul>
+      <li>El <strong>maestro</strong> no calcula nada, solo coordina. Mantiene un contador <code>siguiente</code> de la próxima tarea por entregar y <code>entregadas</code> de las completadas.</li>
+      <li><strong>Arranque</strong>: el maestro da una tarea a cada trabajador para que arranquen todos a la vez.</li>
+      <li><strong>Bucle principal</strong>: recibe el primer resultado que llegue (de quien sea). <code>MPI_ANY_SOURCE</code> permite no saber quién va a contestar antes; <code>st.MPI_SOURCE</code> nos dice quién fue.</li>
+      <li><strong>Reparto bajo demanda</strong>: al trabajador que acaba de entregar, le doy la siguiente tarea pendiente. Si ya no quedan, le mando un mensaje con <code>TAG_FIN</code>.</li>
+      <li>El <strong>trabajador</strong> recibe con <code>MPI_ANY_TAG</code> porque puede llegarle TAG_TAREA o TAG_FIN. Mira <code>st.MPI_TAG</code> para decidir si continúa o sale.</li>
+    </ul>
+  </div>
+
+  <table class="var-table">
+    <tr><th>Estructura / campo</th><th>Significado</th></tr>
+    <tr><td>MPI_Status st</td><td>Estructura que rellena MPI tras un Recv. Contiene info del mensaje real.</td></tr>
+    <tr><td>st.MPI_SOURCE</td><td>Rank de quien envió.</td></tr>
+    <tr><td>st.MPI_TAG</td><td>Etiqueta con la que se envió.</td></tr>
+    <tr><td>MPI_ANY_SOURCE</td><td>Constante: acepta de cualquier remitente.</td></tr>
+    <tr><td>MPI_ANY_TAG</td><td>Constante: acepta cualquier etiqueta.</td></tr>
+  </table>
+
+  <div class="why-box">
+    <strong>¿Por qué balance perfecto?</strong> Ningún trabajador se queda parado mientras haya tareas: en cuanto termina, pide otra. Las tareas caras y baratas se reparten automáticamente. El precio es la sobrecarga de comunicación con el maestro, que solo merece la pena si las tareas son lo bastante grandes.
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 9. BRANCH AND BOUND                                        -->
+  <!-- ========================================================= -->
+  <div class="scheme-header">
+    <h2>9 · Branch &amp; bound (mochila 0/1)</h2>
+    <p>Búsqueda en árbol con poda. Cota global que se mejora y se difunde.</p>
+  </div>
+
+  <div class="problem-box">
+    <strong>Problema.</strong> Mochila 0/1: tenemos N objetos con peso <em>w<sub>i</sub></em> y valor <em>v<sub>i</sub></em>, capacidad <em>W</em>. Maximizar el valor sin pasarse de peso. Cada nodo del árbol decide "meter o no meter" el siguiente objeto.
+  </div>
+
+<pre><code><span class="cm">// Esquema (pseudo-código MPI maestro-trabajador con cota global)</span>
+
+<span class="kw">int</span> cota_global = 0;   <span class="cm">// mejor valor encontrado hasta ahora</span>
+
+<span class="kw">void</span> explorar_subarbol(Nodo n) {
+    <span class="kw">if</span> (n.cota_optimista &lt;= cota_global) <span class="kw">return</span>;   <span class="cm">// PODA</span>
+
+    <span class="kw">if</span> (n.es_hoja()) {
+        <span class="kw">if</span> (n.valor &gt; cota_global) {
+            cota_global = n.valor;
+            <span class="cm">// Difundir la mejora a otros procesos:</span>
+            <span class="kw">for</span> (<span class="kw">int</span> p = 0; p &lt; size; p++)
+                <span class="kw">if</span> (p != rank)
+                    MPI_Send(&amp;cota_global, 1, MPI_INT, p,
+                             TAG_COTA, MPI_COMM_WORLD);
+        }
+        <span class="kw">return</span>;
+    }
+
+    explorar_subarbol(n.con_objeto_actual());
+    explorar_subarbol(n.sin_objeto_actual());
+}
+
+<span class="cm">// Cada proceso, periódicamente, comprueba mensajes de cota entrantes:</span>
+<span class="kw">int</span> flag;
+MPI_Status st;
+MPI_Iprobe(MPI_ANY_SOURCE, TAG_COTA, MPI_COMM_WORLD, &amp;flag, &amp;st);
+<span class="kw">if</span> (flag) {
+    <span class="kw">int</span> nueva_cota;
+    MPI_Recv(&amp;nueva_cota, 1, MPI_INT, st.MPI_SOURCE, TAG_COTA,
+             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    <span class="kw">if</span> (nueva_cota &gt; cota_global) cota_global = nueva_cota;
+}</code></pre>
+
+  <div class="code-walk">
+    <strong>Las claves de B&amp;B paralelo</strong>
+    <ul>
+      <li><strong>Cota optimista</strong> de cada nodo (función del problema): un valor superior al mejor alcanzable en ese subárbol. Si es ≤ cota global actual, ese subárbol no puede mejorar la solución → se poda.</li>
+      <li><strong>Cota global compartida</strong>: cuando un proceso encuentra una solución mejor, la difunde para que los demás puedan podar antes.</li>
+      <li><strong>MPI_Iprobe(source, tag, comm, flag, status)</strong> → mira si hay un mensaje pendiente <em>sin bloquear</em>. <code>flag</code> queda en 1 si hay, 0 si no. Si hay, se hace Recv normal.</li>
+      <li>Usamos Iprobe para no detener la búsqueda esperando mensajes que tal vez no lleguen. Es la versión "asíncrona" de comprobar el buzón.</li>
+      <li><strong>Anomalía</strong>: a veces el paralelo encuentra rápido una cota muy buena y poda enormes subárboles que el secuencial recorre. Resultado: speed-up &gt; p (superlineal). También puede pasar al revés (slowdown).</li>
+    </ul>
+  </div>
+
+  <div class="why-box">
+    <strong>Esquema combinado.</strong> B&amp;B paralelo es trabajadores replicados (cola de subárboles por explorar) + cota global compartida. Cada worker coge subárboles de la cola, explora, comparte mejoras de cota, añade nuevos subárboles a la cola al ramificar.
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- CIERRE                                                     -->
+  <!-- ========================================================= -->
+  <section>
+    <h2>Tabla resumen: qué pista del enunciado lleva a qué esquema</h2>
+    <table>
+      <tr><th>Pista en el enunciado</th><th>Esquema</th><th>Estructura mínima</th></tr>
+      <tr><td>"Misma operación sobre cada elemento"</td><td>Paralelismo de datos</td><td><code>#pragma omp parallel for</code> o Scatter/Gather</td></tr>
+      <tr><td>"Iteramos hasta convergencia"</td><td>Síncrono</td><td>Bucle de pasos + doble buffer + barrera</td></tr>
+      <tr><td>"Converge aunque haya desfases"</td><td>Relajado</td><td>Sin barrera, un solo array</td></tr>
+      <tr><td>"Reducción / combinar todos"</td><td>Grafo (árbol)</td><td>MPI_Reduce o reducción manual log(p)</td></tr>
+      <tr><td>"Flujo de datos por etapas"</td><td>Pipeline</td><td>Cada rank una etapa, Send/Recv en cadena</td></tr>
+      <tr><td>"Recursivo, dividir y combinar"</td><td>Divide y vencerás</td><td><code>omp task</code> + umbral</td></tr>
+      <tr><td>"Tabla con dependencias entre celdas"</td><td>PD</td><td>Bucle externo serie + bucle interno paralelo</td></tr>
+      <tr><td>"Tareas de duración impredecible"</td><td>Trabajadores replicados</td><td>Maestro-trabajador con ANY_SOURCE</td></tr>
+      <tr><td>"Búsqueda con poda"</td><td>Branch &amp; bound</td><td>Cola distribuida + cota global con Iprobe</td></tr>
+    </table>
+
+    <h3>Cómo se reconoce el esquema en el examen</h3>
+    <p>Lee el enunciado y subraya las palabras de la columna izquierda. Si el enunciado dice "cada celda depende de la anterior", es <em>síncrono</em> o <em>PD</em>, no paralelismo de datos. Si dice "tareas de coste muy desigual", piensa en <em>trabajadores replicados</em>, no en un reparto estático. La regla de oro: <strong>identifica primero las dependencias entre los cálculos</strong>; el esquema sale solo.</p>
+  </section>
+
+</div>
+</body>
+</html>
